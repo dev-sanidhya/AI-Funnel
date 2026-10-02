@@ -75,7 +75,9 @@ function briefFor(lead, settings, now = Date.now()) {
   let s = bits.join(' ');
   const more = [];
   if (lead.budget_amount != null) more.push(`budget about ${formatMoney(lead.budget_amount, cur)}`);
-  if (lead.timeline_text || lead.timeline_months != null) more.push(`wants to start ${lead.timeline_text || `in ${lead.timeline_months} months`}`);
+  // "we want to start in 2 months" reads badly after "wants to start", so keep only the timing part.
+  const when = String(lead.timeline_text || '').replace(/^(we |i )?(want|would like|plan|hope|aim)( to)? ?(start|begin|move in)?(ing)? ?/i, '').replace(/^to /i, '').trim();
+  if (when || lead.timeline_months != null) more.push(`wants to start ${when || (lead.timeline_months === 0 ? 'right away' : `in ${lead.timeline_months} months`)}`);
   if (lead.style) more.push(`style: ${lead.style}`);
   if (more.length) s += `${s ? '. ' : ''}${more.join(', ').replace(/^./, (c) => c.toUpperCase())}`;
   const tail = [];

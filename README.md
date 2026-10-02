@@ -78,6 +78,17 @@ Backup plan on demo day: **Test chat** in the console runs the exact same agent 
 
 Bot commands: `/start`, `/help`, `/stop`, and `/reset` (demo mode only: wipes your conversation so you can run the demo again), `/setup <password>`.
 
+## Calls, reminders and "Needs you now"
+
+The assistant does not just qualify: it books the designer call and makes sure it happens.
+
+- **What it captures** (all editable by you in a lead's profile): what they want (scope), their home (type and size), city, budget, when they want to start, style, phone, email, best time to reach them, and the agreed call time. "Tomorrow 5 p.m." becomes an exact timestamp in your time zone (Settings, Your business). A date parser checks the AI's reading, so a model slip cannot move a call.
+- **Phone numbers:** Instagram does not give us one, so the closing message asks for the call time and the best number together.
+- **Confirmation:** the assistant reads the booked time back ("Priya Sharma will call you Tomorrow, Sun 4 Oct, 5:00 PM") and the team gets an alert the moment a call is booked.
+- **Reminders:** inside the messaging window the assistant reminds the customer by itself before the call (default 60 minutes). On Instagram the window is 24 hours from the customer's last message.
+- **Needs you now:** when the assistant cannot message (window closed, assistant paused, they asked for a person, call overdue, no call time agreed after 2 hours), the lead is flagged in the red **Needs you now** column, on the Today screen and in a team alert, so the owner follows up by hand. The owner can reply from the lead profile (Instagram allows human replies for 7 days), mark the call done with a note, snooze, or reschedule.
+- **Calls** tab: every call grouped as Overdue, Today, Tomorrow, Later, plus leads still waiting for a time.
+
 ## Reliability design (why it does not fall over)
 
 | Concern | How it is handled |
