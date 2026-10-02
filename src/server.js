@@ -16,7 +16,7 @@ class HttpError extends Error {
 }
 
 function createServer(app) {
-  const { config, store, settings, engine, telegram, scheduler, simulator, llm } = app;
+  const { config, store, settings, engine, telegram, instagram, scheduler, simulator, llm } = app;
   const sessionKey = crypto.createHmac('sha256', `${config.adminPassword}|${config.intakeSecret}`).update('session-v1').digest('hex');
   const sse = new Set();
   const hits = new Map();
@@ -57,6 +57,28 @@ function createServer(app) {
     });
     req.on('error', reject);
   });
+  const readRaw = (req, max = 1024 * 1024) => new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > max) { reject(new HttpError(413, 'Payload too large')); req.destroy(); return; } chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+  // Which channel the form sends people to: the admin's choice, else Instagram when it is set up.
+  const primaryChannel = () => {
+    const pref = settings.get().channels.primary;
+    const igOk = instagram.enabled && !!instagram.handle;
+    const tgOk = telegram.enabled && !!telegram.botUsername;
+    if (pref === 'instagram' && igOk) return 'instagram';
+    if (pref === 'telegram' && tgOk) return 'telegram';
+    return igOk ? 'instagram' : tgOk ? 'telegram' : null;
+  };
+  const chatLinks = (lead) => {
+    const instagramUrl = instagram.handle ? instagram.chatLink(lead.start_token) : null;
+    const telegramUrl = telegram.deepLink(lead.start_token);
+    const primary = primaryChannel();
+    return { primary, chat_url: primary === 'instagram' ? instagramUrl : primary === 'telegram' ? telegramUrl : null, instagram_url: instagramUrl, telegram_url: telegramUrl };
+  };
   const limit = (req, key, max, windowMs = 60000) => {
     const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
     const k = `${key}:${ip}`;
@@ -114,6 +136,7 @@ function createServer(app) {
     return {
       uptime_s: Math.round((Date.now() - started) / 1000),
       telegram: { ...telegram.status, username: telegram.botUsername },
+      instagram: { ...instagram.status, username: instagram.handle, token: instagram.tokenInfo(), primary: primaryChannel() },
       llm: { enabled: llm.enabled, model: config.llm.model, fallback_model: config.llm.fallbackModel, ...llm.stats },
       engine: engine.stats,
       outbox: {
@@ -170,13 +193,13 @@ function createServer(app) {
   });
   route('GET', '/api/public-config', { public: true }, (req, res) => {
     const s = settings.get();
-    send(res, 200, { business: s.business.name, tagline: s.business.tagline, project_types: s.qualification.project_types, bot: telegram.botUsername, telegram_enabled: telegram.enabled });
+    send(res, 200, { business: s.business.name, tagline: s.business.tagline, project_types: s.qualification.project_types, bot: telegram.botUsername, telegram_enabled: telegram.enabled, instagram: instagram.handle, primary: primaryChannel() });
   });
   route('POST', '/api/intake', { public: true }, async (req, res) => {
     limit(req, 'intake', 20);
     const body = await readBody(req);
     const { lead, duplicate } = createIntake(body, 'form');
-    send(res, 200, { ok: true, duplicate, telegram_url: telegram.deepLink(lead.start_token), bot: telegram.botUsername });
+    send(res, 200, { ok: true, duplicate, bot: telegram.botUsername, ...chatLinks(lead) });
   });
   route('POST', '/api/intake/gform', { public: true }, async (req, res) => {
     limit(req, 'gform', 60);
@@ -184,6 +207,22 @@ function createServer(app) {
     if (!safeEqual(body.secret || req.headers['x-intake-secret'] || '', config.intakeSecret)) throw new HttpError(401, 'Bad secret');
     const { lead, duplicate } = createIntake(body, 'google-form');
     send(res, 200, { ok: true, duplicate, lead_id: lead.id });
+  });
+  // Instagram webhook (public, but every POST must carry a valid Meta signature)
+  route('GET', '/webhook/instagram', { public: true }, (req, res, { query }) => {
+    const challenge = instagram.verifyChallenge(query);
+    if (challenge === null) return send(res, 403, { error: 'Verification failed' });
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end(challenge);
+  });
+  route('POST', '/webhook/instagram', { public: true }, async (req, res) => {
+    const raw = await readRaw(req);
+    if (!instagram.validSignature(raw, req.headers['x-hub-signature-256'])) return send(res, 401, { error: 'Bad signature' });
+    let payload;
+    try { payload = JSON.parse(raw.toString('utf8')); } catch { return send(res, 400, { error: 'Bad JSON' }); }
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('EVENT_RECEIVED'); // acknowledge fast, process after
+    instagram.handleWebhook(payload).catch((e) => console.error('[instagram] webhook failed', e));
   });
   route('POST', '/api/login', { public: true }, async (req, res) => {
     limit(req, 'login', 10);
@@ -201,7 +240,8 @@ function createServer(app) {
     send(res, 200, {
       settings: settings.get(), designers: store.listDesigners(), personas: simulator.personas(),
       stages: STAGES.map((s) => ({ id: s, label: STAGE_LABELS[s] })), status: status(),
-      telegram_link: telegram.deepLink('gform'), public_url: config.publicUrl,
+      telegram_link: telegram.deepLink('gform'), instagram_link: instagram.chatLink(), public_url: config.publicUrl,
+      webhook_url: `${config.publicUrl}/webhook/instagram`, verify_token_set: !!config.instagram.verifyToken,
     });
   });
   route('GET', '/api/status', (req, res) => send(res, 200, status()));
@@ -218,7 +258,7 @@ function createServer(app) {
   route('POST', '/api/leads', async (req, res) => {
     const body = await readBody(req);
     const { lead } = createIntake(body, first(body.source) || 'admin');
-    send(res, 200, { ok: true, id: lead.id, telegram_url: telegram.deepLink(lead.start_token) });
+    send(res, 200, { ok: true, id: lead.id, ...chatLinks(lead) });
   });
   route('GET', '/api/leads/:id', (req, res, { params }) => {
     const lead = store.getLead(Number(params.id));
@@ -228,7 +268,7 @@ function createServer(app) {
       lead: leadCard(lead, designers),
       messages: store.getMessages(lead.id),
       events: store.getEvents(lead.id),
-      telegram_url: lead.chat_id ? null : telegram.deepLink(lead.start_token),
+      telegram_url: lead.chat_id ? null : chatLinks(lead).chat_url,
       meta: { declined: lead.meta.declined || {}, flags: lead.meta.flags || {}, asked: lead.meta.asked || {}, followups_sent: lead.meta.followups_sent || 0, drips_sent: lead.meta.drips_sent || 0 },
     });
   });
@@ -274,7 +314,7 @@ function createServer(app) {
     if (!text) throw new HttpError(400, 'Message is empty');
     const lead = store.getLead(Number(params.id));
     if (!lead) throw new HttpError(404, 'Lead not found');
-    if (!lead.chat_id) throw new HttpError(400, 'This lead has not opened Telegram yet, so there is nowhere to send to');
+    if (!lead.chat_id) throw new HttpError(400, 'This lead has not opened the chat yet, so there is nowhere to send to');
     engine.sendManual(lead.id, text, { pause: b.pause !== false });
     send(res, 200, { ok: true });
   });
@@ -334,6 +374,16 @@ function createServer(app) {
     store.run('UPDATE leads SET designer_id=NULL WHERE designer_id=?', Number(params.id));
     store.deleteDesigner(Number(params.id));
     send(res, 200, { ok: true });
+  });
+
+  // Instagram admin actions. Graph API errors become 400s (a Graph 401 must not look like a lost admin session).
+  const ig = async (fn) => { try { return await fn(); } catch (e) { throw new HttpError(400, e.message || 'Instagram request failed'); } };
+  route('POST', '/api/instagram/subscribe', async (req, res) => { send(res, 200, { ok: true, result: await ig(() => instagram.subscribe()) }); });
+  route('POST', '/api/instagram/refresh-token', async (req, res) => { send(res, 200, { ok: true, result: await ig(() => instagram.refreshToken({ force: true })) }); });
+  route('POST', '/api/instagram/ice-breakers', async (req, res) => {
+    const b = await readBody(req);
+    if (Array.isArray(b.questions)) settings.update({ channels: { ice_breakers: b.questions } });
+    send(res, 200, { ok: true, result: await ig(() => instagram.setIceBreakers(settings.get().channels.ice_breakers)) });
   });
 
   // Simulator, scheduler, integrations

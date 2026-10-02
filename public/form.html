@@ -31,7 +31,7 @@
   <div id="formView">
     <div class="brand" id="biz">Our studio</div>
     <h1>Tell us about your project</h1>
-    <p class="sub">Takes 30 seconds. We will continue the conversation on Telegram to match you with the right designer.</p>
+    <p class="sub">Takes 30 seconds. We will continue the conversation in a direct message to match you with the right designer.</p>
     <form id="f" novalidate>
       <label for="name">Full name</label>
       <input id="name" name="name" autocomplete="name" required>
@@ -43,7 +43,7 @@
       <select id="project_type" name="project_type"><option value="">Select one</option></select>
       <label for="city">City</label>
       <input id="city" name="city" placeholder="e.g. Pune">
-      <button id="go" type="submit">Continue on Telegram</button>
+      <button id="go" type="submit">Continue in chat</button>
       <div class="err" id="err" role="alert"></div>
     </form>
     <div class="fine">By continuing you agree to be contacted about your enquiry.</div>
@@ -51,8 +51,9 @@
   <div class="done" id="doneView">
     <div class="tick">&#10003;</div>
     <h1>Thanks, we have your details</h1>
-    <p class="sub" id="doneMsg">Opening Telegram so we can ask a couple of quick questions...</p>
-    <a class="btn" id="tgBtn" href="#" style="display:none">Open Telegram</a>
+    <p class="sub" id="doneMsg">Opening the chat so we can ask a couple of quick questions...</p>
+    <a class="btn" id="tgBtn" href="#" style="display:none">Open chat</a>
+    <a id="altBtn" href="#" style="display:none;margin-top:14px;color:var(--mute);font-size:14px"></a>
   </div>
 </div>
 <script>
@@ -76,9 +77,14 @@ $('f').addEventListener('submit', async (e) => {
     if (!r.ok) throw new Error(j.error || 'Something went wrong');
     $('formView').style.display = 'none';
     $('doneView').style.display = 'block';
-    if (j.telegram_url) {
-      $('tgBtn').href = j.telegram_url; $('tgBtn').style.display = 'block';
-      setTimeout(() => { location.href = j.telegram_url; }, 900);
+    if (j.chat_url) {
+      const ig = j.primary === 'instagram';
+      $('tgBtn').href = j.chat_url; $('tgBtn').style.display = 'block';
+      $('tgBtn').textContent = ig ? 'Open Instagram' : 'Open Telegram';
+      $('doneMsg').textContent = ig ? 'Opening Instagram. Just send us a quick "Hi" there and we will take it from there.' : 'Opening Telegram so we can ask a couple of quick questions...';
+      const alt = ig ? j.telegram_url : j.instagram_url;
+      if (alt) { $('altBtn').href = alt; $('altBtn').textContent = ig ? 'Prefer Telegram? Continue there' : 'Prefer Instagram? Continue there'; $('altBtn').style.display = 'block'; }
+      setTimeout(() => { location.href = j.chat_url; }, 1400);
     } else {
       $('doneMsg').textContent = 'Our team will be in touch shortly.';
     }

@@ -48,6 +48,20 @@ The funnel only needs to be reachable from the internet if (a) the Google Form
 script must call it, or (b) the lead opens `/form` on another device. For that, run
 `cloudflared tunnel --url http://localhost:3000` (or ngrok) and set `PUBLIC_URL`.
 
+## Instagram setup (main channel)
+
+Telegram stays available; Instagram is the primary channel when configured (switch in Settings -> Integrations).
+How it works: the form sends the lead to `https://ig.me/m/<handle>?ref=<lead token>`. They send a message, Instagram echoes the `ref` back in a webhook, and the chat is tied to their enquiry. Meta rules: the customer messages first, the AI may reply for 24 hours after each of their messages, and only a human can reply after that (up to 7 days, via Send in the lead view).
+
+1. **Instagram account:** a Professional account (Business or Creator). In the Instagram app: Settings -> Messages and story replies -> allow message requests, and Settings -> Privacy -> Messages -> "Allow access to messages" on.
+2. **Meta app:** developers.facebook.com -> Create app -> Business type -> add the product **Instagram** -> "API setup with Instagram login".
+3. **Add the account:** in that screen click "Add account", log in with the Professional account, then **Generate token**. Put it in `INSTAGRAM_ACCESS_TOKEN`. Put the handle in `INSTAGRAM_HANDLE`. The App secret (App settings -> Basic) goes in `INSTAGRAM_APP_SECRET`. Invent any string for `INSTAGRAM_VERIFY_TOKEN`.
+4. **Webhook:** expose the server (cloudflared/ngrok), set `PUBLIC_URL`. In the Meta dashboard: Webhooks -> Callback URL `<PUBLIC_URL>/webhook/instagram`, Verify token = your `INSTAGRAM_VERIFY_TOKEN`, subscribe to `messages`, `messaging_postbacks`, `messaging_referral`. Then press **Subscribe webhooks** in the console.
+5. **Permissions:** `instagram_business_basic` and `instagram_business_manage_messages`.
+6. **Who can message in development mode:** only people with a role on the app. Add the client (and any tester) under App roles -> Roles as Instagram Testers (they accept in Instagram: Settings -> Apps and websites -> Tester invites). To let anyone message the account you need Advanced Access via App Review and Business Verification, which takes days to weeks, so start it early.
+7. **Conversation starters:** Settings -> Integrations -> "Publish starters" adds tappable chips (for example "Get a free design quote") when someone opens the DM. Instagram cannot pre-fill the text box from a link, so the form tells the visitor to send a quick "Hi".
+8. The access token lasts 60 days; the server refreshes it automatically every week.
+
 ## The demo flow
 
 1. **Lead arrives.** Open `/form` on your phone (or submit the Google Form). Submit.

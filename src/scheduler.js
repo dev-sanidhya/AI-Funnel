@@ -34,9 +34,11 @@ class Scheduler {
           if (l.channel === 'sim' && !includeSim) continue;
           if (!l.chat_id || l.ai_paused || l.opted_out || l.stage_locked || !l.last_outbound_at) continue;
           const awaiting = (l.last_inbound_at || 0) < l.last_outbound_at;
+          // Instagram only lets the AI message within 24h of the customer's last message.
+          const windowOpen = l.channel !== 'instagram' || now - (l.last_inbound_at || 0) < 23 * 3600000;
           const sent = l.meta.followups_sent || 0;
           if ((l.stage === 'new' || l.stage === 'qualifying') && awaiting) {
-            if (sent < f.max) {
+            if (sent < f.max && windowOpen) {
               const wait = (sent === 0 ? f.first_after_min : f.second_after_min) * MIN;
               if (force || now - l.last_outbound_at >= wait) { await this.engine.nudge(l.id, 'followup'); result.followups++; }
             } else if (!(l.meta.flags && l.meta.flags.stalled) && (force || now - l.last_outbound_at >= f.second_after_min * MIN)) {
@@ -45,7 +47,7 @@ class Scheduler {
             }
           } else if (l.stage === 'nurture' && !l.opted_out) {
             const drips = l.meta.drips_sent || 0;
-            if (drips < f.nurture_max && (force || now - l.last_outbound_at >= f.nurture_every_days * 86400000)) {
+            if (windowOpen && drips < f.nurture_max && (force || now - l.last_outbound_at >= f.nurture_every_days * 86400000)) {
               await this.engine.nudge(l.id, 'drip');
               result.drips++;
             }

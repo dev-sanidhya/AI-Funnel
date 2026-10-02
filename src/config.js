@@ -34,6 +34,14 @@ module.exports = {
   intakeSecret: env.INTAKE_SECRET || 'change-me',
   demoMode: String(env.DEMO_MODE || 'true') !== 'false',
   telegramToken: env.TELEGRAM_BOT_TOKEN || '',
+  // Instagram messaging (Instagram API with Instagram Login). Needs a Professional account.
+  instagram: {
+    accessToken: env.INSTAGRAM_ACCESS_TOKEN || '',
+    appSecret: env.INSTAGRAM_APP_SECRET || '',
+    verifyToken: env.INSTAGRAM_VERIFY_TOKEN || '',
+    handle: (env.INSTAGRAM_HANDLE || '').replace(/^@/, ''),
+    apiVersion: env.INSTAGRAM_API_VERSION || 'v23.0',
+  },
   // Cloudflare Workers AI (preferred when CF_* are set) via its OpenAI-compatible
   // endpoint; otherwise any OpenAI-compatible provider (defaults to Groq).
   llm: useCloudflare

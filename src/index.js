@@ -15,11 +15,13 @@ async function main() {
   server.listen(config.port, () => {
     console.log(`[server] admin console  ${config.publicUrl}/admin`);
     console.log(`[server] enquiry form   ${config.publicUrl}/form`);
+    console.log(`[server] IG webhook     ${config.publicUrl}/webhook/instagram`);
   });
 
   const recovered = app.engine.recover();
   if (recovered) console.log(`[engine] resuming ${recovered} unprocessed conversation(s)`);
   app.scheduler.start();
+  await app.instagram.start();
   try {
     await app.telegram.start();
     if (app.telegram.botUsername) console.log(`[telegram] chat link    https://t.me/${app.telegram.botUsername}?start=gform`);

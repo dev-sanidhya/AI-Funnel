@@ -105,6 +105,14 @@ class Store {
     this.db = new DatabaseSync(file);
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;');
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  // Additive migrations for databases created by earlier versions.
+  migrate() {
+    const cols = this.all('PRAGMA table_info(messages)').map((c) => c.name);
+    if (!cols.includes('ext_id')) this.db.exec('ALTER TABLE messages ADD COLUMN ext_id TEXT');
+    this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_ext ON messages(ext_id)');
   }
 
   tx(fn) {
@@ -205,8 +213,8 @@ class Store {
   // ---- messages ----
   addMessage(m) {
     const r = this.run(
-      'INSERT INTO messages(lead_id,direction,role,text,tg_update_id,status,processed,created_at) VALUES(?,?,?,?,?,?,?,?)',
-      m.lead_id, m.direction, m.role, m.text, m.tg_update_id ?? null,
+      'INSERT INTO messages(lead_id,direction,role,text,tg_update_id,ext_id,status,processed,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+      m.lead_id, m.direction, m.role, m.text, m.tg_update_id ?? null, m.ext_id ?? null,
       m.status || (m.direction === 'in' ? 'received' : 'pending'), m.processed ? 1 : 0, now(),
     );
     return Number(r.lastInsertRowid);

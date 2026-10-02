@@ -79,25 +79,25 @@ class Engine extends EventEmitter {
     return lead;
   }
 
-  // Bind a Telegram chat to the lead created at form submit, or create an organic one.
-  bindChat(chatId, profile, { token, source } = {}) {
+  // Bind a chat (Telegram or Instagram) to the lead created at form submit, or create an organic one.
+  bindChat(chatId, profile, { token, source, channel = 'telegram' } = {}) {
     let lead = this.store.getLeadByChat(chatId);
     if (lead) return { lead, isNew: false };
     if (token) {
       const form = this.store.getLeadByToken(token);
       if (form && !form.chat_id) {
-        lead = this.store.updateLead(form.id, { chat_id: String(chatId), tg_username: profile.username || null, name: form.name || profile.first_name || null });
-        this.store.addEvent(lead.id, 'telegram_linked', { via: 'token' });
+        lead = this.store.updateLead(form.id, { chat_id: String(chatId), channel, tg_username: profile.username || null, name: form.name || profile.first_name || null });
+        this.store.addEvent(lead.id, 'chat_linked', { via: 'token', channel });
         this.changed('lead', lead.id);
         return { lead, isNew: false, linked: true };
       }
     }
     lead = this.store.createLead({
-      channel: 'telegram',
+      channel,
       chat_id: String(chatId),
       tg_username: profile.username || null,
       name: profile.first_name || null,
-      source: source || 'telegram',
+      source: source || channel,
       start_token: this.newToken(),
     });
     this.store.addEvent(lead.id, 'lead_created', { source: lead.source });
@@ -125,12 +125,38 @@ class Engine extends EventEmitter {
     return linked;
   }
 
+  // A referral (ig.me link ?ref=<token>) can arrive after the person's first message
+  // already created an organic lead. Fold that placeholder into the form lead.
+  linkReferral(chatId, token, profile = {}, channel = 'instagram') {
+    const form = this.store.getLeadByToken(token);
+    if (!form) return null;
+    const current = this.store.getLeadByChat(chatId);
+    if (current && current.id === form.id) return form;
+    if (form.chat_id) return null; // token already used by another chat
+    if (!current) return this.bindChat(chatId, profile, { token, channel }).lead;
+    return this.runExclusive(current.id, async () => {
+      this.store.tx(() => {
+        this.store.run('UPDATE messages SET lead_id=? WHERE lead_id=?', form.id, current.id);
+        this.store.run('DELETE FROM events WHERE lead_id=?', current.id);
+        this.store.run('DELETE FROM leads WHERE id=?', current.id);
+        this.store.updateLead(form.id, {
+          chat_id: String(chatId), channel, tg_username: profile.username || current.tg_username || null,
+          name: form.name || current.name || null, last_inbound_at: current.last_inbound_at,
+        });
+        this.store.addEvent(form.id, 'chat_linked', { via: 'referral', channel });
+      });
+      this.changed('lead', form.id);
+      this.drain(form.id).catch(() => {});
+      return this.store.getLead(form.id);
+    });
+  }
+
   // ---------- inbound ----------
-  receive({ channel = 'telegram', chatId, text, profile = {}, updateId = null }) {
+  receive({ channel = 'telegram', chatId, text, profile = {}, updateId = null, externalId = null, token = null }) {
     let lead = this.store.getLeadByChat(chatId);
-    if (!lead) lead = this.bindChat(chatId, profile).lead;
+    if (!lead) lead = this.bindChat(chatId, profile, { channel, token }).lead;
     try {
-      this.store.addMessage({ lead_id: lead.id, direction: 'in', role: 'user', text: String(text).slice(0, 4000), tg_update_id: updateId });
+      this.store.addMessage({ lead_id: lead.id, direction: 'in', role: 'user', text: String(text).slice(0, 4000), tg_update_id: updateId, ext_id: externalId });
     } catch (e) {
       if (/UNIQUE/i.test(String(e.message))) return { leadId: lead.id, duplicate: true };
       throw e;
@@ -206,7 +232,10 @@ class Engine extends EventEmitter {
       lead = this.store.updateLead(leadId, { ...applied.patch, meta: applied.meta });
 
       // 2. Decide (pure code).
-      const decision = this.decide(lead, settings, { changed: applied.changed });
+      // Instagram leads speak first, so the first turn is the greeting: it welcomes them
+      // by name and asks the first question in one message.
+      const firstContact = !history.some((m) => m.direction === 'out');
+      const decision = this.decide(lead, settings, { changed: applied.changed, greeting: firstContact });
       lead = decision.lead;
 
       // 3. Compose.
@@ -359,7 +388,7 @@ class Engine extends EventEmitter {
       `Score ${lead.score}/100`,
       lead.stage_reason ? `Why: ${lead.stage_reason}` : '',
       lead.summary ? `Notes: ${lead.summary}` : (lead.notes ? `Notes: ${lead.notes}` : ''),
-      lead.tg_username ? `Telegram: @${lead.tg_username}` : '',
+      lead.tg_username ? `${lead.channel === 'instagram' ? 'Instagram' : 'Telegram'}: @${lead.tg_username}` : (lead.channel === 'instagram' ? 'Channel: Instagram DM' : ''),
       lead.phone ? `Phone: ${lead.phone}` : '',
       `Open: ${this.config.publicUrl}/admin#lead=${lead.id}`,
     ].filter(Boolean).join('\n');
@@ -571,7 +600,7 @@ class Engine extends EventEmitter {
         const lead = this.store.getLead(m.lead_id);
         if (!lead) return;
         try {
-          await this.transportFor(lead).send(lead, m.text);
+          await this.transportFor(lead).send(lead, m.text, { role: m.role });
           this.store.run("UPDATE messages SET status='sent', error=NULL WHERE id=?", messageId);
           this.store.updateLead(lead.id, { last_outbound_at: Date.now() });
           this.changed('message', lead.id);

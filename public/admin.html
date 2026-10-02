@@ -207,7 +207,8 @@ function renderFoot() {
   const s = state.boot && state.boot.status; if (!s) return;
   const tg = s.telegram.enabled ? (s.telegram.connected ? `<span class="dot ok"></span> Telegram @${esc(s.telegram.username || '')}` : '<span class="dot bad"></span> Telegram offline') : '<span class="dot warn"></span> Telegram not set';
   const llm = s.llm.enabled ? `<span class="dot ${s.llm.lastError && !s.llm.lastOkAt ? 'bad' : 'ok'}"></span> AI ready` : '<span class="dot bad"></span> No AI key';
-  $('#foot').innerHTML = `${tg}<br>${llm}<br><a href="#" id="logout" style="color:inherit">Sign out</a>`;
+  const ig = s.instagram && s.instagram.enabled ? (s.instagram.connected ? `<span class="dot ok"></span> Instagram @${esc(s.instagram.username || '')}` : '<span class="dot bad"></span> Instagram offline') : '<span class="dot warn"></span> Instagram not set';
+  $('#foot').innerHTML = `${ig}<br>${tg}<br>${llm}<br><a href="#" id="logout" style="color:inherit">Sign out</a>`;
   $('#logout').onclick = act(async (e) => { e.preventDefault(); await api('/api/logout', { method: 'POST', body: {} }); location.reload(); });
 }
 function go(v) { state.view = v; closeDrawer(); renderNav(); render(); }
@@ -247,7 +248,9 @@ function leadCard(l) {
   if (l.designer) tags.push(`<span class="tag">${esc(l.designer)}</span>`);
   if (l.ai_paused) tags.push('<span class="tag" style="color:var(--human)">AI paused</span>');
   if (l.channel === 'sim') tags.push('<span class="tag sim">sim</span>');
-  if (l.stage === 'new' && !l.has_chat) tags.push('<span class="tag">not on Telegram yet</span>');
+  if (l.channel === 'instagram') tags.push('<span class="tag">Instagram</span>');
+  else if (l.channel === 'telegram') tags.push('<span class="tag">Telegram</span>');
+  if (l.stage === 'new' && !l.has_chat) tags.push('<span class="tag">not in chat yet</span>');
   return `<div class="lead s-${l.stage}" data-id="${l.id}">
     <div class="n"><span>${esc(l.name || 'Unknown')}</span><span class="score">${l.score}</span></div>
     <div class="meta">${esc(facts || l.source || '')} &middot; ${ago(l.updated_at)}</div>
@@ -327,12 +330,12 @@ async function openLead(id, { keepScroll } = {}) {
       <div class="mute" style="margin-top:3px">${esc(l.stage_reason || '')}${l.stage_locked ? ' (manual override)' : ''}</div>
       <div class="row" style="margin-top:6px"><span class="score">Score ${l.score}/100</span>
         ${l.ai_paused ? '<span class="tag" style="color:var(--human)">AI paused</span>' : ''}${l.opted_out ? '<span class="tag">opted out</span>' : ''}${l.channel === 'sim' ? '<span class="tag sim">simulated</span>' : ''}
-        ${l.tg_username ? `<span class="tag">@${esc(l.tg_username)}</span>` : ''}</div>
+        <span class="tag">${l.channel === 'instagram' ? 'Instagram' : l.channel === 'telegram' ? 'Telegram' : 'Simulated'}${l.tg_username ? ` @${esc(l.tg_username)}` : ''}</span></div>
     </div>
     <button class="btn sm" id="dx">Close</button>
   </div>
   <div class="db">
-    ${d.telegram_url ? `<div class="card" style="margin-bottom:14px"><b>Hasn't opened Telegram yet.</b><div class="mute" style="margin:4px 0 6px">Chat link for this lead:</div><code>${esc(d.telegram_url)}</code></div>` : ''}
+    ${d.telegram_url ? `<div class="card" style="margin-bottom:14px"><b>Hasn't opened the chat yet.</b><div class="mute" style="margin:4px 0 6px">Chat link for this lead:</div><code>${esc(d.telegram_url)}</code></div>` : ''}
     ${l.summary ? `<div class="card" style="margin-bottom:14px"><b>Conversation summary</b><div class="mute" style="margin-top:4px">${esc(l.summary)}</div></div>` : ''}
     <div class="sec" style="margin-top:0"><h3>Details <span class="mute" style="font-weight:400">(editable, saved on blur)</span></h3>
       <div class="facts">${fl('name', 'Name', l.name)}${fl('phone', 'Phone', l.phone)}${fl('email', 'Email', l.email)}${fl('city', 'City', l.city)}
@@ -575,10 +578,22 @@ function tabFollow() {
 
 async function tabInteg() {
   await refreshBoot();
-  const h = S().handoff; const st = state.boot.status; const base = state.boot.public_url;
+  const h = S().handoff; const st = state.boot.status; const base = state.boot.public_url; const ig = st.instagram || {};
   const botLink = state.boot.telegram_link;
   $('#tabBody').innerHTML = `<div class="grid2" style="gap:18px;align-items:start">
-  <div><div class="card" style="margin-bottom:16px"><h3>Telegram bot</h3>
+  <div><div class="card" style="margin-bottom:16px"><h3>Instagram (main channel)</h3>
+    <p>${ig.enabled ? (ig.connected ? `<span class="pill-ok">Connected</span> as @${esc(ig.username)}${ig.token && ig.token.expiresAt ? ` &middot; token valid until ${new Date(ig.token.expiresAt).toLocaleDateString()}` : ''}` : '<span class="pill-bad">Offline</span> ' + esc(ig.lastError || '')) : '<span class="pill-bad">Not configured.</span> Add the Instagram values to <code>.env</code> (see README, "Instagram setup") and restart.'}</p>
+    ${ig.enabled ? `<label>Chat link</label><code>${esc(state.boot.instagram_link || '')}</code>` : ''}
+    <label>Webhook callback URL (paste into the Meta app dashboard)</label><code>${esc(state.boot.webhook_url)}</code>
+    <div class="mute" style="font-size:12px;margin:4px 0 0">${state.boot.verify_token_set ? 'Verify token is set in .env.' : '<span class="pill-bad">INSTAGRAM_VERIFY_TOKEN is not set.</span>'} ${ig.webhookSigned ? 'Signature check is on.' : '<span class="pill-bad">INSTAGRAM_APP_SECRET is not set, so every webhook will be rejected.</span>'} ${ig.lastWebhookAt ? `Last webhook ${ago(ig.lastWebhookAt)}.` : 'No webhook received yet.'}</div>
+    <label>Conversation starters (up to 4, shown as tappable chips when someone opens the DM)</label>
+    <textarea id="ibq" style="min-height:70px">${esc(S().channels.ice_breakers.join('\n'))}</textarea>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="igSub" ${ig.enabled ? '' : 'disabled'}>Subscribe webhooks</button><button class="btn" id="igIce" ${ig.enabled ? '' : 'disabled'}>Publish starters</button><button class="btn" id="igTok" ${ig.enabled ? '' : 'disabled'}>Refresh token</button></div>
+    <label>Where should the form send people?</label>
+    <select id="primCh"><option value="auto" ${S().channels.primary === 'auto' ? 'selected' : ''}>Automatic (Instagram if set up, else Telegram)</option><option value="instagram" ${S().channels.primary === 'instagram' ? 'selected' : ''}>Instagram</option><option value="telegram" ${S().channels.primary === 'telegram' ? 'selected' : ''}>Telegram</option></select>
+    <div class="mute" style="font-size:12px;margin-top:4px">Right now: <b>${esc(ig.primary || 'none')}</b>. Instagram only lets the AI reply within 24 hours of the customer's message; after that only you can reply from the lead view (up to 7 days).</div>
+    <button class="btn" style="margin-top:8px" id="savePrim">Save channel settings</button></div>
+  <div class="card" style="margin-bottom:16px"><h3>Telegram bot (secondary)</h3>
     <p>${st.telegram.enabled ? (st.telegram.connected ? `<span class="pill-ok">Connected</span> as @${esc(st.telegram.username)}` : '<span class="pill-bad">Offline</span> ' + esc(st.telegram.lastError || '')) : '<span class="pill-bad">No token.</span> Create a bot with @BotFather, put the token in <code>.env</code> as TELEGRAM_BOT_TOKEN and restart.'}</p>
     ${botLink ? `<label>Link to put on the Google Form confirmation</label><code>${esc(botLink)}</code>` : ''}
     <label>Team alert chat ID</label><input id="nc" value="${esc(h.notify_chat_id)}" placeholder="Send /setup ${'<password>'} to the bot from the team chat">
@@ -586,6 +601,7 @@ async function tabInteg() {
     <div class="row" style="margin-top:10px"><button class="btn primary" id="saveNc">Save</button><button class="btn" id="testAlert">Send test alert</button></div></div>
   <div class="card"><h3>Lead sources</h3>
     <p class="mute">Enquiry form (hosted here, stands in for a Meta lead ad): <a href="${esc(base)}/form" target="_blank"><code>${esc(base)}/form</code></a></p>
+    <p class="mute">The form sends people to <b>${esc(ig.primary || 'no channel yet')}</b> with their lead id attached (<code>ig.me/m/handle?ref=...</code> on Instagram), so the chat is tied to their enquiry.</p>
     <p class="mute">Google Form: add the script in <code>integrations/google-form.gs</code>, set its URL to <code>${esc(base)}/api/intake/gform</code> and the secret from <code>.env</code>. Then use the Telegram link above in the form's confirmation message.</p>
     ${base.startsWith('http://localhost') ? '<p class="pill-bad">Your public URL is localhost. For Google Forms or a phone on another network, expose this server (cloudflared tunnel / ngrok / deploy) and set PUBLIC_URL.</p>' : ''}</div></div>
   <div><div class="card" style="margin-bottom:16px"><h3>CRM sync (webhook)</h3><div class="mute">Every lead created, updated or recategorised is POSTed as JSON, signed with HMAC-SHA256 (header <code>X-Funnel-Signature</code>) and retried with backoff if the CRM is down. Point it at Zapier, Make, HubSpot, Google Sheets or the client's own system.</div>
@@ -599,6 +615,11 @@ async function tabInteg() {
     <tr><td>Messages waiting to send</td><td>${st.outbox.pending_messages} (failed: ${st.outbox.failed_messages})</td></tr>
     <tr><td>Conversation turns handled</td><td>${st.engine.turns}</td></tr><tr><td>Uptime</td><td>${Math.round(st.uptime_s / 60)} min</td></tr></tbody></table>
     <div class="row" style="margin-top:14px"><a class="btn" href="/api/export.csv">Export all leads (CSV)</a><button class="btn danger" id="wipe">Wipe all leads</button></div></div></div></div>`;
+  const starters = () => lines(val('ibq')).slice(0, 4);
+  $('#igSub').onclick = act(async () => { await api('/api/instagram/subscribe', { method: 'POST', body: {} }); toast('Subscribed to messages, postbacks and referrals'); });
+  $('#igIce').onclick = act(async () => { await api('/api/instagram/ice-breakers', { method: 'POST', body: { questions: starters() } }); await refreshBoot(); toast('Conversation starters published'); });
+  $('#igTok').onclick = act(async () => { await api('/api/instagram/refresh-token', { method: 'POST', body: {} }); await refreshBoot(); toast('Token refreshed'); tabInteg(); });
+  $('#savePrim').onclick = act(async () => { await saveSettings({ channels: { primary: val('primCh'), ice_breakers: starters() } }); await refreshBoot(); tabInteg(); });
   $('#saveNc').onclick = act(async () => saveSettings({ handoff: { notify_chat_id: val('nc') } }));
   $('#testAlert').onclick = act(async () => { await saveSettings({ handoff: { notify_chat_id: val('nc') } }, 'Saved'); await api('/api/test-alert', { method: 'POST', body: {} }); toast('Test alert sent'); });
   $('#saveW').onclick = act(async () => saveSettings({ handoff: { webhook_url: val('wu'), webhook_secret: val('ws') } }));

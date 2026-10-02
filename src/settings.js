@@ -38,6 +38,10 @@ const DEFAULTS = {
     nurture_every_days: 7,
     nurture_max: 3,
   },
+  channels: {
+    primary: 'auto',
+    ice_breakers: ['Get a free design quote', 'Check if my project fits', 'Talk about my budget'],
+  },
   handoff: {
     notify_chat_id: '',
     webhook_url: '',
@@ -78,6 +82,8 @@ function sanitize(s) {
   f.enabled = !!f.enabled;
   for (const k of ['first_after_min', 'second_after_min', 'max', 'nurture_every_days', 'nurture_max']) f[k] = Math.max(0, Number(f[k]) || 0);
   s.agent.reveal_minimum = !!s.agent.reveal_minimum;
+  s.channels.primary = ['auto', 'instagram', 'telegram'].includes(s.channels.primary) ? s.channels.primary : 'auto';
+  s.channels.ice_breakers = listish(s.channels.ice_breakers).slice(0, 4);
   s.handoff.alert_stages = listish(s.handoff.alert_stages);
   s.handoff.notify_chat_id = String(s.handoff.notify_chat_id || '').trim();
   return s;
