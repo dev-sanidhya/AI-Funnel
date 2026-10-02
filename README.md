@@ -60,7 +60,8 @@ How it works: the form sends the lead to `https://ig.me/m/<handle>?ref=<lead tok
 5. **Permissions:** `instagram_business_basic` and `instagram_business_manage_messages`.
 6. **Who can message in development mode:** only people with a role on the app. Add the client (and any tester) under App roles -> Roles as Instagram Testers (they accept in Instagram: Settings -> Apps and websites -> Tester invites). To let anyone message the account you need Advanced Access via App Review and Business Verification, which takes days to weeks, so start it early.
 7. **Conversation starters:** Settings -> Integrations -> "Publish starters" adds tappable chips (for example "Get a free design quote") when someone opens the DM. Instagram cannot pre-fill the text box from a link, so the form tells the visitor to send a quick "Hi".
-8. The access token lasts 60 days; the server refreshes it automatically every week.
+8. Run `node scripts/check-instagram.js` to verify the whole chain (env, token, subscription, public webhook).
+9. The access token lasts 60 days; the server refreshes it automatically every week.
 
 ## The demo flow
 
