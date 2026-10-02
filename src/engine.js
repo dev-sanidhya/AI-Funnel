@@ -18,6 +18,8 @@ const { applyFacts } = require('./facts');
 const { evaluate, pickDesigner, STAGE_LABELS } = require('./qualify');
 const { fallbackReply } = require('./agent');
 const { formatMoney } = require('./budget');
+const { formatWhen } = require('./when');
+const { briefFor, windowOpen } = require('./attention');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const FINAL = new Set(['active', 'nurture', 'disqualified']);
@@ -226,7 +228,7 @@ class Engine extends EventEmitter {
         this.stats.llmFallbacks++;
         this.store.addEvent(lead.id, 'llm_error', { step: 'extract', error: String(e.message).slice(0, 200) });
       }
-      const applied = applyFacts(lead, facts || {}, text, { lastAsked, settings });
+      const applied = applyFacts(lead, facts || {}, text, { lastAsked, settings, now: Date.now() });
       applied.meta.turns = (lead.meta.turns || 0) + 1;
       const prevStage = lead.stage;
       lead = this.store.updateLead(leadId, { ...applied.patch, meta: applied.meta });
@@ -245,7 +247,7 @@ class Engine extends EventEmitter {
       const out = this.commitTurn({ lead, decision, reply, rowIds, prevStage, changed: applied.changed });
       this.changed('lead', leadId);
       if (out.messageId) this.deliver(out.messageId).catch(() => {});
-      this.sideEffects(out.lead, prevStage, decision);
+      this.sideEffects(out.lead, prevStage, decision, applied.changed);
       this.maybeSummarize(leadId);
     } finally {
       stopTyping();
@@ -270,7 +272,19 @@ class Engine extends EventEmitter {
     if (stage === 'human') {
       directive = meta.closed_stage === 'human' ? null : { type: 'HANDOFF', reason: reasonText };
     } else if (FINAL.has(stage)) {
-      directive = meta.closed_stage === stage ? { type: 'POST' } : { type: `CLOSE_${stage === 'active' ? 'ACTIVE' : stage === 'nurture' ? 'NURTURE' : 'DISQUALIFIED'}`, reason: reasonText };
+      if (meta.closed_stage === stage) {
+        directive = { type: 'POST' };
+        if (stage === 'active') {
+          if (changed.includes('callback_at') && lead.callback_at) {
+            directive = { type: 'CONFIRM_CALLBACK', when: formatWhen(lead.callback_at, settings.business.timezone) };
+          } else {
+            directive.askCallback = !lead.callback_at && (meta.asked.callback || 0) < 2;
+            directive.askPhone = !directive.askCallback && !lead.phone && !lead.email && (meta.asked.phone || 0) < 2;
+          }
+        }
+      } else {
+        directive = { type: `CLOSE_${stage === 'active' ? 'ACTIVE' : stage === 'nurture' ? 'NURTURE' : 'DISQUALIFIED'}`, reason: reasonText };
+      }
     } else {
       const field = ev.nextField;
       const col = { budget: 'budget_amount', timeline: 'timeline_months' }[field] || field;
@@ -315,6 +329,15 @@ class Engine extends EventEmitter {
     } else if (directive && directive.type === 'GREET') {
       meta.last_asked = directive.field;
       meta.asked = { ...meta.asked, [directive.field]: (meta.asked[directive.field] || 0) + 1 };
+    } else if (directive && directive.type === 'CLOSE_ACTIVE' && !lead.callback_at) {
+      meta.last_asked = 'callback';
+      meta.asked = { ...meta.asked, callback: (meta.asked.callback || 0) + 1, ...(!lead.phone && !lead.email ? { phone: (meta.asked.phone || 0) + 1 } : {}) };
+    } else if (directive && directive.type === 'POST' && directive.askCallback) {
+      meta.last_asked = 'callback';
+      meta.asked = { ...meta.asked, callback: (meta.asked.callback || 0) + 1 };
+    } else if (directive && ((directive.type === 'POST' && directive.askPhone) || (directive.type === 'CONFIRM_CALLBACK' && !lead.phone && !lead.email))) {
+      meta.last_asked = null;
+      meta.asked = { ...meta.asked, phone: (meta.asked.phone || 0) + 1 };
     } else if (directive) {
       meta.last_asked = null;
     }
@@ -338,11 +361,31 @@ class Engine extends EventEmitter {
     });
   }
 
-  sideEffects(lead, prevStage, decision) {
+  sideEffects(lead, prevStage, decision, changed = []) {
     const stageChanged = lead.stage !== prevStage;
     if (stageChanged && lead.stage === 'active' && !lead.designer_id) this.assignDesigner(lead);
     const fresh = this.store.getLead(lead.id);
     this.afterChange(fresh, { stageChanged, prevStage });
+    // A booked call is the most time-sensitive fact we learn: tell the team straight away.
+    if (changed.includes('callback_at') && fresh.callback_at && fresh.channel !== 'sim') this.alertCallback(fresh).catch(() => {});
+  }
+
+  async alertCallback(lead) {
+    const tz = this.settings.get().business.timezone;
+    const d = lead.designer_id ? this.store.getDesigner(lead.designer_id) : null;
+    const lines = [
+      `CALL BOOKED: ${lead.name || 'Unknown'}`,
+      `When: ${formatWhen(lead.callback_at, tz)}`,
+      d ? `Designer: ${d.name}` : '',
+      lead.phone ? `Phone: ${lead.phone}` : 'No phone number yet, message them first',
+      `About: ${briefFor(lead, this.settings.get())}`,
+      `Open: ${this.config.publicUrl}/admin#lead=${lead.id}`,
+    ].filter(Boolean).join('\n');
+    const targets = new Set();
+    const chat = this.settings.get().handoff.notify_chat_id;
+    if (chat) targets.add(chat);
+    if (d && d.telegram_chat_id) targets.add(d.telegram_chat_id);
+    for (const c of targets) { try { await this.transports.telegram?.sendRaw(c, lines); } catch (e) { this.log.warn('[engine] call alert failed', e.message); } }
   }
 
   assignDesigner(lead) {
@@ -375,6 +418,9 @@ class Engine extends EventEmitter {
       timeline_months: lead.timeline_months, timeline_text: lead.timeline_text,
       stage: lead.stage, stage_reason: lead.stage_reason, score: lead.score,
       designer: designer ? designer.name : null, notes: lead.notes, summary: lead.summary,
+      property: lead.property, scope: lead.scope, style: lead.style, contact_pref: lead.contact_pref,
+      call_at: lead.callback_at ? new Date(lead.callback_at).toISOString() : null, call_text: lead.callback_text, call_status: lead.callback_status,
+      brief: briefFor(lead, this.settings.get()),
       created_at: lead.created_at, updated_at: lead.updated_at, ...extra,
     };
   }
@@ -386,6 +432,8 @@ class Engine extends EventEmitter {
       [lead.project_type, lead.city].filter(Boolean).join(' in ') || 'Project details pending',
       `Budget ${lead.budget_amount != null ? this.money(lead.budget_amount) : 'n/a'} | Timeline ${lead.timeline_text || (lead.timeline_months != null ? `${lead.timeline_months} months` : 'n/a')}`,
       `Score ${lead.score}/100`,
+      lead.callback_at ? `Call: ${formatWhen(lead.callback_at, s.business.timezone)}` : '',
+      `About: ${briefFor(lead, s)}`,
       lead.stage_reason ? `Why: ${lead.stage_reason}` : '',
       lead.summary ? `Notes: ${lead.summary}` : (lead.notes ? `Notes: ${lead.notes}` : ''),
       lead.tg_username ? `${lead.channel === 'instagram' ? 'Instagram' : 'Telegram'}: @${lead.tg_username}` : (lead.channel === 'instagram' ? 'Channel: Instagram DM' : ''),
@@ -448,7 +496,10 @@ class Engine extends EventEmitter {
       if (!lead || lead.ai_paused || lead.opted_out || !lead.chat_id) return null;
       const meta = { ...lead.meta };
       let directive;
-      if (kind === 'followup') {
+      if (kind === 'reminder') {
+        directive = { type: 'REMINDER', when: lead.callback_at ? formatWhen(lead.callback_at, settings.business.timezone) : '' };
+        meta.fu = { ...(meta.fu || {}), reminded_at: Date.now() };
+      } else if (kind === 'followup') {
         meta.followups_sent = (meta.followups_sent || 0) + 1;
         const ev = evaluate(lead, settings, { hasInbound: this.hasInbound(lead) });
         directive = { type: 'FOLLOWUP', n: meta.followups_sent, field: ev.nextField };
@@ -461,7 +512,7 @@ class Engine extends EventEmitter {
       const id = this.store.tx(() => {
         this.store.updateLead(leadId, { meta });
         const mid = this.store.addMessage({ lead_id: leadId, direction: 'out', role: 'assistant', text: reply, status: 'pending' });
-        this.store.addEvent(leadId, kind === 'followup' ? 'followup_sent' : 'drip_sent', { n: kind === 'followup' ? meta.followups_sent : meta.drips_sent });
+        this.store.addEvent(leadId, kind === 'reminder' ? 'reminder_sent' : kind === 'followup' ? 'followup_sent' : 'drip_sent', { n: kind === 'followup' ? meta.followups_sent : kind === 'drip' ? meta.drips_sent : 1 });
         return mid;
       });
       this.deliver(id).catch(() => {});
@@ -493,6 +544,7 @@ class Engine extends EventEmitter {
       this.store.addEvent(leadId, 'ai_paused', { by: 'admin', auto: true });
     }
     this.store.addEvent(leadId, 'manual_message', {});
+    { const fresh = this.store.getLead(leadId); const meta = this.fuMeta(fresh); meta.fu.manual_done_at = Date.now(); delete meta.fu.snooze_until; this.store.updateLead(leadId, { meta }); }
     this.reevaluateLead(leadId);
     this.deliver(id).catch(() => {});
     this.changed('lead', leadId);
@@ -587,6 +639,64 @@ class Engine extends EventEmitter {
       this.store.addEvent(leadId, 'lead_reset', {});
     });
     this.changed('lead', leadId);
+  }
+
+  // ---------- follow-ups the owner manages ----------
+  fuMeta(lead) { return { ...lead.meta, fu: { ...(lead.meta.fu || {}) } }; }
+
+  // Sets, changes or clears the agreed call time (also used by the admin to reschedule).
+  setCallback(leadId, atMs, text) {
+    const lead = this.store.getLead(leadId);
+    const meta = this.fuMeta(lead);
+    for (const k of ['reminded_at', 'done_at', 'manual_needed_at', 'manual_reason', 'manual_done_at', 'snooze_until']) delete meta.fu[k];
+    const patch = atMs
+      ? { callback_at: atMs, callback_status: 'scheduled', callback_text: text || lead.callback_text, meta }
+      : { callback_at: null, callback_status: text ? 'requested' : null, callback_text: text || null, meta };
+    this.store.updateLead(leadId, patch);
+    this.store.addEvent(leadId, 'call_rescheduled', { at: atMs || null });
+    this.afterChange(this.store.getLead(leadId), {});
+    this.changed('lead', leadId);
+  }
+
+  // Owner actions on a follow-up: 'done' (with an optional outcome note) or 'snooze'.
+  completeFollowup(leadId, { action = 'done', note = '', hours = 4 } = {}) {
+    const lead = this.store.getLead(leadId);
+    const meta = this.fuMeta(lead);
+    const patch = { meta };
+    if (action === 'snooze') {
+      meta.fu.snooze_until = Date.now() + Math.max(0.25, Number(hours) || 4) * 3600000;
+      this.store.addEvent(leadId, 'followup_snoozed', { hours });
+    } else {
+      meta.fu.done_at = Date.now();
+      meta.fu.manual_done_at = Date.now();
+      meta.fu.human_done_at = Date.now();
+      delete meta.fu.snooze_until;
+      if (lead.callback_at) patch.callback_status = 'done';
+      if (note && note.trim()) patch.notes = (`${lead.notes ? lead.notes + '; ' : ''}Follow-up done: ${note.trim().slice(0, 200)}`).slice(0, 600);
+      this.store.addEvent(leadId, 'followup_done', { note: note.trim().slice(0, 200) });
+    }
+    this.store.updateLead(leadId, patch);
+    this.afterChange(this.store.getLead(leadId), {});
+    this.changed('lead', leadId);
+  }
+
+  // The assistant cannot reach this person (messaging window closed, paused...), so the owner must.
+  markManual(leadId, reason) {
+    const lead = this.store.getLead(leadId);
+    if (!lead || (lead.meta.fu && lead.meta.fu.manual_needed_at && !lead.meta.fu.manual_done_at)) return;
+    const meta = this.fuMeta(lead);
+    meta.fu.manual_needed_at = Date.now();
+    meta.fu.manual_reason = reason;
+    delete meta.fu.manual_done_at;
+    this.store.updateLead(leadId, { meta });
+    this.store.addEvent(leadId, 'manual_followup_needed', { reason });
+    this.changed('lead', leadId);
+    const chat = this.settings.get().handoff.notify_chat_id;
+    if (chat && lead.channel !== 'sim') {
+      this.transports.telegram?.sendRaw(chat, `FOLLOW UP BY HAND: ${lead.name || 'A lead'}
+${reason}
+${this.config.publicUrl}/admin#lead=${lead.id}`).catch(() => {});
+    }
   }
 
   // ---------- outbound delivery ----------

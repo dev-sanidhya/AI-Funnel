@@ -9,6 +9,7 @@
 const crypto = require('node:crypto');
 const { formatMoney } = require('./budget');
 const { STAGE_LABELS } = require('./qualify');
+const { formatWhen } = require('./when');
 
 const MAX_ATTEMPTS = 8;
 
@@ -46,14 +47,15 @@ const csvCell = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-function toCsv(leads, currency, designers = []) {
+function toCsv(leads, currency, designers = [], tz = 'Asia/Kolkata') {
   const byId = Object.fromEntries(designers.map((d) => [d.id, d.name]));
-  const head = ['id', 'name', 'phone', 'email', 'telegram', 'source', 'campaign', 'stage', 'stage_reason', 'score', 'project_type', 'city', 'budget', 'timeline', 'designer', 'notes', 'summary', 'created_at', 'updated_at'];
+  const head = ['id', 'name', 'phone', 'email', 'telegram', 'source', 'campaign', 'stage', 'stage_reason', 'score', 'project_type', 'scope', 'property', 'style', 'city', 'budget', 'timeline', 'call_booked', 'call_status', 'best_time_to_reach', 'designer', 'notes', 'created_at', 'updated_at'];
   const rows = leads.map((l) => [
     l.id, l.name, l.phone, l.email, l.tg_username, l.source, l.campaign, STAGE_LABELS[l.stage] || l.stage, l.stage_reason, l.score,
-    l.project_type, l.city, l.budget_amount != null ? formatMoney(l.budget_amount, currency) : '',
+    l.project_type, l.scope, l.property, l.style, l.city, l.budget_amount != null ? formatMoney(l.budget_amount, currency) : '',
     l.timeline_text || (l.timeline_months != null ? `${l.timeline_months} months` : ''),
-    byId[l.designer_id] || '', l.notes, l.summary, new Date(l.created_at).toISOString(), new Date(l.updated_at).toISOString(),
+    l.callback_at ? formatWhen(l.callback_at, tz) : (l.callback_text || ''), l.callback_status || '', l.contact_pref,
+    byId[l.designer_id] || '', l.notes, new Date(l.created_at).toISOString(), new Date(l.updated_at).toISOString(),
   ]);
   return [head, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
 }

@@ -7,6 +7,7 @@ const DEFAULTS = {
   business: {
     name: 'Aperture Interiors',
     tagline: 'Design to execution, under one roof',
+    timezone: 'Asia/Kolkata',
     description: 'A premium interior design and execution studio for homes, offices and commercial spaces. We design, build and hand over turnkey projects.',
     services: ['Full home interiors', 'Modular kitchens and wardrobes', 'Office interiors', 'Renovations', 'Design-only consultation'],
     pricing_note: 'Pricing depends on carpet area, material and scope. Never quote exact numbers; offer a free consultation for an accurate estimate.',
@@ -37,6 +38,8 @@ const DEFAULTS = {
     max: 2,
     nurture_every_days: 7,
     nurture_max: 3,
+    reminder_before_min: 60,
+    overdue_after_min: 30,
   },
   channels: {
     primary: 'auto',
@@ -80,7 +83,8 @@ function sanitize(s) {
   s.business.services = listish(s.business.services);
   const f = s.followups;
   f.enabled = !!f.enabled;
-  for (const k of ['first_after_min', 'second_after_min', 'max', 'nurture_every_days', 'nurture_max']) f[k] = Math.max(0, Number(f[k]) || 0);
+  for (const k of ['first_after_min', 'second_after_min', 'max', 'nurture_every_days', 'nurture_max', 'reminder_before_min', 'overdue_after_min']) f[k] = Math.max(0, Number(f[k]) || 0);
+  try { new Intl.DateTimeFormat('en-US', { timeZone: s.business.timezone }); } catch { s.business.timezone = 'Asia/Kolkata'; }
   s.agent.reveal_minimum = !!s.agent.reveal_minimum;
   s.channels.primary = ['auto', 'instagram', 'telegram'].includes(s.channels.primary) ? s.channels.primary : 'auto';
   s.channels.ice_breakers = listish(s.channels.ice_breakers).slice(0, 4);

@@ -6,6 +6,8 @@ const crypto = require('node:crypto');
 const { toCsv } = require('./crm');
 const { STAGES, STAGE_LABELS, evaluate } = require('./qualify');
 const { normalizePhone } = require('./db');
+const { attentionFor, briefFor, windowOpen, windowHoursLeft } = require('./attention');
+const { isoLocalToEpoch } = require('./when');
 
 const PUBLIC = path.resolve(__dirname, '..', 'public');
 const MAX_BODY = 200 * 1024;
@@ -103,6 +105,11 @@ function createServer(app) {
       source: l.source, campaign: l.campaign, channel: l.channel, has_chat: !!l.chat_id,
       ai_paused: !!l.ai_paused, opted_out: !!l.opted_out, designer: d ? d.name : null, designer_id: l.designer_id,
       turns: l.meta.turns || 0,
+      property: l.property, scope: l.scope, style: l.style, contact_pref: l.contact_pref,
+      callback_at: l.callback_at, callback_text: l.callback_text, callback_status: l.callback_status, callback_kind: l.callback_kind,
+      brief: briefFor(l, settings.get()),
+      attention: attentionFor(l, settings.get()),
+      window_hours_left: windowHoursLeft(l), can_ai_message: windowOpen(l, Date.now(), 0),
       last_message: last ? { text: last.text.slice(0, 140), direction: last.direction, role: last.role, at: last.created_at } : null,
       created_at: l.created_at, updated_at: l.updated_at, qualified_at: l.qualified_at,
     };
@@ -274,7 +281,7 @@ function createServer(app) {
       messages: store.getMessages(lead.id),
       events: store.getEvents(lead.id),
       telegram_url: lead.chat_id ? null : chatLinks(lead).chat_url,
-      meta: { declined: lead.meta.declined || {}, flags: lead.meta.flags || {}, asked: lead.meta.asked || {}, followups_sent: lead.meta.followups_sent || 0, drips_sent: lead.meta.drips_sent || 0 },
+      meta: { fu: lead.meta.fu || {}, declined: lead.meta.declined || {}, flags: lead.meta.flags || {}, asked: lead.meta.asked || {}, followups_sent: lead.meta.followups_sent || 0, drips_sent: lead.meta.drips_sent || 0 },
     });
   });
   route('PATCH', '/api/leads/:id', async (req, res, { params }) => {
@@ -283,7 +290,14 @@ function createServer(app) {
     if (!lead) throw new HttpError(404, 'Lead not found');
     const b = await readBody(req);
     const patch = {};
-    for (const k of ['name', 'phone', 'email', 'project_type', 'city', 'notes', 'timeline_text']) if (k in b) patch[k] = first(b[k]).slice(0, 300) || null;
+    for (const k of ['name', 'phone', 'email', 'project_type', 'city', 'notes', 'timeline_text', 'property', 'scope', 'style', 'contact_pref']) if (k in b) patch[k] = first(b[k]).slice(0, 300) || null;
+    if ('callback_at' in b) {
+      const tz = settings.get().business.timezone;
+      const raw = b.callback_at;
+      const at = raw === null || raw === '' ? null : typeof raw === 'number' ? raw : (isoLocalToEpoch(String(raw), tz) ?? (Number.isNaN(Date.parse(raw)) ? undefined : Date.parse(raw)));
+      if (at === undefined) throw new HttpError(400, 'That date and time is not valid');
+      engine.setCallback(id, at, 'callback_text' in b ? first(b.callback_text) : undefined);
+    }
     if ('budget_amount' in b) {
       const n = needNum(b.budget_amount);
       if (n !== null && (!Number.isFinite(n) || n < 0)) throw new HttpError(400, 'Invalid budget');
@@ -329,6 +343,23 @@ function createServer(app) {
     const b = await readBody(req);
     await engine.nudge(Number(params.id), b.kind === 'drip' ? 'drip' : 'followup');
     send(res, 200, { ok: true });
+  });
+
+  // Follow-ups: mark done, snooze, or reschedule
+  route('POST', '/api/leads/:id/followup', async (req, res, { params }) => {
+    const b = await readBody(req);
+    const id = Number(params.id);
+    if (!store.getLead(id)) throw new HttpError(404, 'Lead not found');
+    if (b.action === 'reschedule') {
+      const at = isoLocalToEpoch(String(b.at || ''), settings.get().business.timezone);
+      if (at === null) throw new HttpError(400, 'Pick a date and time');
+      engine.setCallback(id, at);
+    } else engine.completeFollowup(id, { action: b.action === 'snooze' ? 'snooze' : 'done', note: first(b.note), hours: b.hours });
+    send(res, 200, { ok: true });
+  });
+  route('GET', '/api/activity', (req, res) => {
+    const rows = store.all("SELECT e.id, e.lead_id, e.type, e.data, e.created_at, l.name FROM events e JOIN leads l ON l.id=e.lead_id WHERE e.type IN ('stage_changed','lead_created','designer_assigned','call_rescheduled','followup_done','reminder_sent','manual_followup_needed','facts_updated','followup_sent') AND l.channel!='sim' ORDER BY e.id DESC LIMIT 25");
+    send(res, 200, { items: rows.map((r) => ({ ...r, data: JSON.parse(r.data || '{}') })) });
   });
 
   // Test chat (acts as the customer, in the browser, through the same pipeline)
@@ -426,7 +457,7 @@ function createServer(app) {
   });
   route('GET', '/api/export.csv', (req, res) => {
     const s = settings.get();
-    const csv = toCsv(store.listLeads({ limit: 20000 }), s.qualification.currency, store.listDesigners());
+    const csv = toCsv(store.listLeads({ limit: 20000 }), s.qualification.currency, store.listDesigners(), s.business.timezone);
     res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="leads.csv"' });
     res.end(csv);
   });

@@ -5,6 +5,7 @@
 // during a demo (each press moves silent leads one step along the sequence).
 
 const { deliverWebhooks } = require('./crm');
+const { windowOpen: windowIsOpen } = require('./attention');
 
 class Scheduler {
   constructor({ engine, store, settings, log = console, tickMs = 15000 }) {
@@ -22,12 +23,29 @@ class Scheduler {
   async tick({ force = false, includeSim = false } = {}) {
     if (this.busy) return { skipped: true };
     this.busy = true;
-    const result = { followups: 0, drips: 0, stalled: 0, outbox: 0, webhooks: 0 };
+    const result = { followups: 0, drips: 0, stalled: 0, outbox: 0, webhooks: 0, reminders: 0, manual: 0 };
     try {
       result.outbox = await this.engine.sweepOutbox();
       const f = this.settings.get().followups;
       const now = Date.now();
       const MIN = 60000;
+      const q = this.settings.get().qualification;
+      // Call reminders: the assistant reminds the customer itself while it still can;
+      // when it cannot (messaging window closed), the owner is told to do it by hand.
+      for (const l of this.store.listLeads({ limit: 2000 })) {
+        if (l.channel === 'sim' && !includeSim) continue;
+        const fu = l.meta.fu || {};
+        if (!l.callback_at || l.callback_status !== 'scheduled' || fu.done_at || fu.reminded_at || fu.manual_needed_at) continue;
+        if (l.opted_out || l.stage === 'disqualified') continue;
+        const due = force || (now >= l.callback_at - f.reminder_before_min * MIN && now < l.callback_at + f.overdue_after_min * MIN);
+        if (!due) continue;
+        if (l.chat_id && !l.ai_paused && windowIsOpen(l, now)) { await this.engine.nudge(l.id, 'reminder'); result.reminders++; }
+        else {
+          const why = !l.chat_id ? 'They have not opened the chat, so the assistant cannot message them.' : l.ai_paused ? 'The assistant is paused on this chat.' : "Their Instagram 24-hour messaging window has closed, so the assistant can no longer message them.";
+          this.engine.markManual(l.id, `${why} Call or message them about the booked call.`);
+          result.manual++;
+        }
+      }
       if (f.enabled) {
         const leads = this.store.listLeads({ limit: 2000 });
         for (const l of leads) {
@@ -42,6 +60,8 @@ class Scheduler {
               const wait = (sent === 0 ? f.first_after_min : f.second_after_min) * MIN;
               if (force || now - l.last_outbound_at >= wait) { await this.engine.nudge(l.id, 'followup'); result.followups++; }
             } else if (!(l.meta.flags && l.meta.flags.stalled) && (force || now - l.last_outbound_at >= f.second_after_min * MIN)) {
+              const valuable = (l.budget_amount == null || l.budget_amount >= q.min_budget) && l.score >= 30;
+              if (!windowIsOpen(l, now) && valuable && sent < f.max) { this.engine.markManual(l.id, 'They went quiet and the Instagram 24-hour window closed before the assistant could follow up. Message or call them yourself.'); result.manual++; }
               this.engine.markStalled(l.id);
               result.stalled++;
             }

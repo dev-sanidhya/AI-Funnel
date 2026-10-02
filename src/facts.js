@@ -6,6 +6,7 @@
 // cannot move a lead across the budget bar.
 
 const { parseAmount, looksLikeBudget, amountSupportedByText, isBareNumberAnswer } = require('./budget');
+const { parseWhen, isoLocalToEpoch } = require('./when');
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
 const PHONE_RE = /(?:\+?\d[\d\s().-]{6,17}\d)/;
@@ -27,7 +28,7 @@ function extractContact(text) {
 
 // Returns { patch, changed, meta } where patch holds column updates and meta is
 // the updated lead.meta object (flags, refusal counters, declined fields).
-function applyFacts(lead, f, userText, { lastAsked = null, settings }) {
+function applyFacts(lead, f, userText, { lastAsked = null, settings, now = Date.now() }) {
   f = f && typeof f === 'object' ? f : {};
   const patch = {};
   const changed = [];
@@ -75,6 +76,44 @@ function applyFacts(lead, f, userText, { lastAsked = null, settings }) {
     const prev = lead.notes || '';
     const add = clip(f.notes, 160);
     if (!prev.toLowerCase().includes(add.toLowerCase())) set('notes', clip(prev ? `${prev}; ${add}` : add, 600));
+  }
+
+  // Property details the designer needs, kept as short phrases.
+  for (const [col, key, n] of [['property', 'property', 80], ['scope', 'scope', 160], ['style', 'style', 100], ['contact_pref', 'contact_pref', 100]]) {
+    if (typeof f[key] === 'string' && f[key].trim() && !/^(null|none|n\/a|unknown)$/i.test(f[key].trim())) set(col, clip(f[key], n));
+  }
+
+  // Call / meeting time. The deterministic parser and the model are cross-checked:
+  // an explicit clock time in the customer's own words wins over the model's guess.
+  const tz = settings.business.timezone || 'Asia/Kolkata';
+  // Also treat a clear time in a message as a (re)schedule when a call is already in play and the
+  // wording is about meeting, even if the model did not flag it.
+  const rescheduleWords = /\b(make it|instead|change|reschedul|move|shift|postpone|prepone|can we|could we|call|meet|visit|available|free|works)\b/i;
+  const detEarly = (lead.callback_at || lead.callback_text) && rescheduleWords.test(userText) ? parseWhen(userText, now, tz) : null;
+  const wantsCallback = lastAsked === 'callback' || (typeof f.callback_text === 'string' && f.callback_text.trim()) || !!(detEarly && detEarly.hasTime);
+  if (wantsCallback) {
+    const det = parseWhen(userText, now, tz);
+    let llmAt = typeof f.callback_at === 'string' ? isoLocalToEpoch(f.callback_at, tz) : null;
+    if (llmAt !== null && (llmAt < now - 10 * 60000 || llmAt > now + 120 * 86400000)) llmAt = null;
+    let at = null;
+    if (det && det.at && det.hasTime && !det.approx) at = det.at;
+    else if (llmAt !== null) at = llmAt;
+    else if (det && det.at) at = det.at;
+    const words = clip((typeof f.callback_text === 'string' && f.callback_text.trim()) || userText, 80);
+    if (at !== null && at < now - 10 * 60000) at = null;
+    if (at !== null) {
+      if (lead.callback_at !== at) {
+        set('callback_at', at);
+        set('callback_text', words);
+        set('callback_status', 'scheduled');
+        meta.fu = { ...(meta.fu || {}) };
+        delete meta.fu.reminded_at; delete meta.fu.done_at; delete meta.fu.manual_needed_at; delete meta.fu.manual_reason; delete meta.fu.snooze_until;
+      }
+    } else if ((det && det.day) || (typeof f.callback_text === 'string' && f.callback_text.trim())) {
+      // A preference without an exact time ("tomorrow evening", "sometime next week").
+      if (!lead.callback_at && lead.callback_text !== words) { set('callback_text', words); set('callback_status', 'requested'); }
+    }
+    if (typeof f.callback_kind === 'string' && /visit|video|call/i.test(f.callback_kind)) set('callback_kind', /visit/i.test(f.callback_kind) ? 'visit' : /video/i.test(f.callback_kind) ? 'video' : 'call');
   }
 
   // Flags and refusals.

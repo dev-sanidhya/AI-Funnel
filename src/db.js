@@ -95,6 +95,7 @@ const LEAD_COLUMNS = new Set([
   'notes', 'stage', 'stage_reason', 'stage_locked', 'score', 'designer_id', 'ai_paused',
   'opted_out', 'summary', 'summary_upto', 'meta', 'start_token', 'last_inbound_at',
   'last_outbound_at', 'qualified_at',
+  'callback_at', 'callback_text', 'callback_status', 'callback_kind', 'property', 'scope', 'style', 'contact_pref',
 ]);
 
 const now = () => Date.now();
@@ -112,6 +113,9 @@ class Store {
   migrate() {
     const cols = this.all('PRAGMA table_info(messages)').map((c) => c.name);
     if (!cols.includes('ext_id')) this.db.exec('ALTER TABLE messages ADD COLUMN ext_id TEXT');
+    const lcols = this.all('PRAGMA table_info(leads)').map((c) => c.name);
+    const add = { callback_at: 'INTEGER', callback_text: 'TEXT', callback_status: 'TEXT', callback_kind: 'TEXT', property: 'TEXT', scope: 'TEXT', style: 'TEXT', contact_pref: 'TEXT' };
+    for (const [c, type] of Object.entries(add)) if (!lcols.includes(c)) this.db.exec(`ALTER TABLE leads ADD COLUMN ${c} ${type}`);
     this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_ext ON messages(ext_id)');
   }
 
