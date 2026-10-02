@@ -1,0 +1,13 @@
+{
+  "name": "lead-funnel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI lead qualification funnel: Telegram agent, lead CRM, admin console, persona simulator",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test \"test/*.test.js\"",
+    "simulate": "node scripts/simulate.js"
+  }
+}
