@@ -186,6 +186,7 @@ function createServer(app) {
   route('GET', '/', { public: true }, (req, res) => { res.writeHead(302, { Location: '/admin' }); res.end(); });
   route('GET', '/form', { public: true }, (req, res) => send(res, 200, page('form.html')()));
   route('GET', '/admin', { public: true }, (req, res) => send(res, 200, page('admin.html')()));
+  route('GET', '/privacy', { public: true }, (req, res) => send(res, 200, page('privacy.html')()));
 
   // Public API
   route('GET', '/api/health', { public: true }, (req, res) => {
@@ -217,10 +218,14 @@ function createServer(app) {
   });
   route('POST', '/webhook/instagram', { public: true }, async (req, res) => {
     const raw = await readRaw(req);
-    if (!instagram.validSignature(raw, req.headers['x-hub-signature-256'])) return send(res, 401, { error: 'Bad signature' });
+    if (!instagram.validSignature(raw, req.headers['x-hub-signature-256'])) {
+      console.warn(`[instagram] webhook REJECTED (bad or missing signature, ${raw.length} bytes). Check INSTAGRAM_APP_SECRET.`);
+      return send(res, 401, { error: 'Bad signature' });
+    }
     let payload;
     try { payload = JSON.parse(raw.toString('utf8')); } catch { return send(res, 400, { error: 'Bad JSON' }); }
     res.writeHead(200, { 'Content-Type': 'text/plain' });
+    console.log(`[instagram] webhook received: ${JSON.stringify(payload).slice(0, 300)}`);
     res.end('EVENT_RECEIVED'); // acknowledge fast, process after
     instagram.handleWebhook(payload).catch((e) => console.error('[instagram] webhook failed', e));
   });
