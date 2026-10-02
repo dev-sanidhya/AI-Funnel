@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lead Funnel Console</title>
+<style>
+  :root {
+    --bg:#f5f3ef; --panel:#fff; --ink:#1c1a17; --mute:#756f66; --line:#e6e1d8; --soft:#faf8f4;
+    --side:#1b1916; --side-ink:#d9d3c8; --accent:#b4542d; --accent-ink:#fff;
+    --new:#7a7f8a; --qualifying:#3b6fd4; --active:#23865a; --nurture:#c98a12; --disqualified:#b84040; --human:#8a4fc4;
+    --radius:12px; --shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 22px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12100e; --panel:#1c1a17; --ink:#efebe3; --mute:#9d968a; --line:#322e28; --soft:#211e1a; --side:#0c0b0a; --accent:#d8744a; --accent-ink:#1a0f09;
+      --new:#9aa0ac; --qualifying:#6b97f0; --active:#43b883; --nurture:#e2a936; --disqualified:#e07070; --human:#b585ec; --shadow:none; }
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; }
+  button { font:inherit; cursor:pointer; }
+  input,select,textarea { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; width:100%; outline:none; }
+  input:focus,select:focus,textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+  textarea { resize:vertical; min-height:64px; }
+  label { display:block; font-size:12px; font-weight:600; color:var(--mute); margin:12px 0 5px; }
+  .btn { border:1px solid var(--line); background:var(--panel); color:var(--ink); padding:8px 13px; border-radius:8px; font-weight:600; }
+  .btn:hover { border-color:var(--mute); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn.danger { color:var(--disqualified); }
+  .btn.sm { padding:5px 9px; font-size:12px; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  h2 { font-size:20px; margin:0; }
+  h3 { font-size:15px; margin:0 0 4px; }
+  .mute { color:var(--mute); }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:0 16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); }
+  .badge { display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:99px; font-size:12px; font-weight:700; color:#fff; }
+  .badge.new { background:var(--new); } .badge.qualifying { background:var(--qualifying); } .badge.active { background:var(--active); }
+  .badge.nurture { background:var(--nurture); } .badge.disqualified { background:var(--disqualified); } .badge.human { background:var(--human); }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; background:var(--mute); }
+  .dot.ok { background:var(--active); } .dot.bad { background:var(--disqualified); } .dot.warn { background:var(--nurture); }
+
+  /* layout */
+  aside { width:216px; background:var(--side); color:var(--side-ink); display:flex; flex-direction:column; padding:18px 12px; flex-shrink:0; }
+  aside .logo { font-weight:800; font-size:15px; padding:2px 10px 16px; color:#fff; letter-spacing:.01em; }
+  aside .logo small { display:block; font-weight:500; color:#8f887c; font-size:11px; margin-top:2px; }
+  aside nav button { display:flex; width:100%; align-items:center; gap:10px; text-align:left; background:none; border:0; color:inherit; padding:9px 10px; border-radius:8px; font-weight:600; }
+  aside nav button:hover { background:rgba(255,255,255,.06); }
+  aside nav button.on { background:rgba(255,255,255,.12); color:#fff; }
+  aside .foot { margin-top:auto; font-size:12px; padding:10px; color:#8f887c; line-height:1.9; }
+  main { flex:1; min-width:0; display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+  .top { padding:18px 26px 10px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .top .grow { flex:1; }
+  .content { flex:1; overflow:auto; padding:6px 26px 30px; }
+  .toggle { display:inline-flex; align-items:center; gap:7px; font-weight:600; font-size:13px; color:var(--mute); cursor:pointer; }
+  .toggle input { width:auto; }
+
+  /* stats */
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin-bottom:16px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; }
+  .stat b { display:block; font-size:24px; line-height:1.1; }
+  .stat span { font-size:12px; color:var(--mute); font-weight:600; }
+
+  /* board */
+  .board { display:grid; grid-template-columns:repeat(6,minmax(210px,1fr)); gap:12px; align-items:start; min-width:1300px; }
+  .col { background:var(--soft); border:1px solid var(--line); border-radius:var(--radius); padding:10px; min-height:140px; }
+  .col h4 { margin:2px 4px 10px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; display:flex; justify-content:space-between; align-items:center; }
+  .col h4 i { font-style:normal; padding:1px 8px; border-radius:99px; background:var(--line); color:var(--ink); font-size:12px; }
+  .col.new h4 { color:var(--new); } .col.qualifying h4 { color:var(--qualifying); } .col.active h4 { color:var(--active); }
+  .col.nurture h4 { color:var(--nurture); } .col.disqualified h4 { color:var(--disqualified); } .col.human h4 { color:var(--human); }
+  .lead { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--new); border-radius:10px; padding:10px 11px; margin-bottom:8px; cursor:pointer; transition:transform .12s, box-shadow .12s; }
+  .lead:hover { transform:translateY(-1px); box-shadow:var(--shadow); }
+  .lead.s-qualifying { border-left-color:var(--qualifying); } .lead.s-active { border-left-color:var(--active); } .lead.s-nurture { border-left-color:var(--nurture); }
+  .lead.s-disqualified { border-left-color:var(--disqualified); } .lead.s-human { border-left-color:var(--human); }
+  .lead .n { font-weight:700; display:flex; justify-content:space-between; gap:6px; }
+  .lead .meta { color:var(--mute); font-size:12px; margin-top:3px; }
+  .lead .why { font-size:12px; margin-top:6px; color:var(--mute); border-top:1px dashed var(--line); padding-top:6px; }
+  .lead .tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+  .tag { font-size:11px; background:var(--soft); border:1px solid var(--line); padding:1px 7px; border-radius:6px; color:var(--mute); font-weight:600; }
+  .tag.sim { color:var(--human); border-color:var(--human); }
+  .score { font-size:11px; font-weight:800; padding:1px 6px; border-radius:6px; background:var(--soft); border:1px solid var(--line); }
+  .empty { color:var(--mute); text-align:center; padding:20px 6px; font-size:12px; }
+
+  /* table */
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+  th,td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--line); font-size:13px; vertical-align:middle; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); background:var(--soft); }
+  tr.click { cursor:pointer; } tr.click:hover td { background:var(--soft); }
+
+  /* drawer */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; z-index:20; }
+  .drawer { position:fixed; top:0; right:0; bottom:0; width:min(620px,100vw); background:var(--bg); border-left:1px solid var(--line); z-index:21; transform:translateX(100%); transition:transform .2s; display:flex; flex-direction:column; }
+  .drawer.open { transform:none; } .scrim.open { display:block; }
+  .drawer .dh { padding:16px 20px; border-bottom:1px solid var(--line); background:var(--panel); display:flex; gap:12px; align-items:flex-start; }
+  .drawer .db { flex:1; overflow:auto; padding:16px 20px 30px; }
+  .facts { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  .chat { background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:12px; max-height:360px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
+  .msg { max-width:82%; padding:8px 11px; border-radius:12px; white-space:pre-wrap; word-wrap:break-word; font-size:13.5px; }
+  .msg.in { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
+  .msg.out { align-self:flex-end; background:var(--accent); color:var(--accent-ink); }
+  .msg.admin { align-self:flex-end; background:var(--human); color:#fff; }
+  .msg small { display:block; opacity:.7; font-size:10.5px; margin-top:3px; }
+  .msg.pending { opacity:.6; } .msg.failed { outline:2px solid var(--disqualified); }
+  .events { font-size:12px; color:var(--mute); }
+  .events div { padding:5px 0; border-bottom:1px dashed var(--line); }
+  .sec { margin-top:20px; }
+  .sec > h3 { margin-bottom:8px; }
+
+  /* settings */
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:16px; flex-wrap:wrap; }
+  .tabs button { background:none; border:0; padding:9px 14px; font-weight:600; color:var(--mute); border-bottom:2px solid transparent; }
+  .tabs button.on { color:var(--ink); border-bottom-color:var(--accent); }
+  input[type=range] { padding:0; border:0; box-shadow:none; accent-color:var(--accent); }
+  .big { font-size:34px; font-weight:800; letter-spacing:-.02em; }
+  .bar { display:flex; height:26px; border-radius:8px; overflow:hidden; background:var(--line); }
+  .bar div { display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; min-width:0; transition:flex .3s; }
+  .moved { max-height:150px; overflow:auto; font-size:12.5px; margin-top:8px; }
+  .moved div { padding:3px 0; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:#fff; padding:10px 16px; border-radius:10px; z-index:50; display:none; font-weight:600; max-width:90vw; }
+  .login { position:fixed; inset:0; background:var(--bg); z-index:60; display:none; align-items:center; justify-content:center; padding:16px; }
+  .login .card { width:100%; max-width:340px; }
+  .chk { display:flex; flex-wrap:wrap; gap:6px 16px; }
+  .chk label { display:flex; align-items:center; gap:6px; margin:4px 0; font-size:13px; color:var(--ink); font-weight:500; }
+  .chk input { width:auto; }
+  .pill-ok { color:var(--active); font-weight:700; } .pill-bad { color:var(--disqualified); font-weight:700; }
+  code { background:var(--soft); border:1px solid var(--line); padding:1px 6px; border-radius:5px; font-size:12px; word-break:break-all; }
+  pre { background:var(--soft); border:1px solid var(--line); padding:10px; border-radius:8px; overflow:auto; font-size:12px; }
+  @media (max-width:860px) { aside { width:60px; } aside .logo small, aside nav span, aside .foot { display:none; } .facts,.grid2,.grid3 { grid-template-columns:1fr; } .content { padding:6px 12px 30px; } .top { padding:14px 12px 8px; } }
+</style>
+</head>
+<body>
+<div class="login" id="login">
+  <div class="card">
+    <h2 style="margin-bottom:4px">Lead Funnel Console</h2>
+    <p class="mute" style="margin:0 0 10px">Sign in to continue.</p>
+    <label for="pw">Admin password</label>
+    <input id="pw" type="password" autocomplete="current-password">
+    <div id="loginErr" style="color:var(--disqualified);min-height:20px;margin-top:8px"></div>
+    <button class="btn primary" style="width:100%;margin-top:6px" id="loginBtn">Sign in</button>
+  </div>
+</div>
+
+<aside>
+  <div class="logo">Lead Funnel<small>AI qualification console</small></div>
+  <nav id="nav"></nav>
+  <div class="foot" id="foot"></div>
+</aside>
+<main>
+  <div class="top"><h2 id="title"></h2><div class="grow"></div><div id="topActions" class="row"></div></div>
+  <div class="content" id="view"></div>
+</main>
+<div class="scrim" id="scrim"></div>
+<div class="drawer" id="drawer"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const STAGES = ['new', 'qualifying', 'active', 'nurture', 'disqualified', 'human'];
+const LABEL = { new: 'New', qualifying: 'Qualifying', active: 'Active', nurture: 'Nurtured', disqualified: 'Disqualified', human: 'Needs human' };
+const BLURB = { new: 'Awaiting first reply', qualifying: 'AI is asking questions', active: 'Qualified, ready for a designer', nurture: 'Good fit, not now', disqualified: 'Below the bar or not a fit', human: 'A person should take over' };
+const state = { view: 'pipeline', settingsTab: 'bar', boot: null, leads: [], stats: null, includeSim: true, openLead: null, chatLeadId: null, sim: null, filter: '' };
+
+// ---------- api ----------
+async function api(path, opts = {}) {
+  const res = await fetch(path, { method: opts.method || 'GET', headers: opts.body ? { 'Content-Type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (res.status === 401) { showLogin(); throw new Error('Not signed in'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+let toastTimer;
+function toast(msg, bad) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; t.style.background = bad ? '#b84040' : '#222';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2800);
+}
+const act = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
+
+// ---------- formatting ----------
+function money(n) {
+  if (n === null || n === undefined || n === '') return 'n/a';
+  const cur = state.boot ? state.boot.settings.qualification.currency : 'INR';
+  n = Number(n);
+  const t = (x) => String(Math.round(x * 100) / 100);
+  if (cur === 'INR') { if (n >= 1e7) return `₹${t(n / 1e7)}Cr`; if (n >= 1e5) return `₹${t(n / 1e5)}L`; if (n >= 1e3) return `₹${t(n / 1e3)}k`; return `₹${n}`; }
+  const sym = { USD: '$', EUR: '€', GBP: '£' }[cur] || cur + ' ';
+  if (n >= 1e6) return `${sym}${t(n / 1e6)}M`; if (n >= 1e3) return `${sym}${t(n / 1e3)}k`; return `${sym}${n}`;
+}
+function ago(ts) {
+  if (!ts) return '';
+  const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`; if (s < 3600) return `${Math.round(s / 60)}m ago`; if (s < 86400) return `${Math.round(s / 3600)}h ago`; return `${Math.round(s / 86400)}d ago`;
+}
+const timeOf = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const timeline = (l) => l.timeline_text || (l.timeline_months != null ? `${l.timeline_months} mo` : null);
+
+// ---------- shell ----------
+const NAV = [['pipeline', 'Pipeline', '▦'], ['leads', 'All leads', '☰'], ['chat', 'Test chat', '☎'], ['sim', 'Simulator', '⚡'], ['settings', 'Settings', '⚙']];
+function renderNav() {
+  $('#nav').innerHTML = NAV.map(([id, label, icon]) => `<button data-v="${id}" class="${state.view === id ? 'on' : ''}"><b>${icon}</b><span>${label}</span></button>`).join('');
+  $('#nav').querySelectorAll('button').forEach((b) => b.onclick = () => go(b.dataset.v));
+}
+function renderFoot() {
+  const s = state.boot && state.boot.status; if (!s) return;
+  const tg = s.telegram.enabled ? (s.telegram.connected ? `<span class="dot ok"></span> Telegram @${esc(s.telegram.username || '')}` : '<span class="dot bad"></span> Telegram offline') : '<span class="dot warn"></span> Telegram not set';
+  const llm = s.llm.enabled ? `<span class="dot ${s.llm.lastError && !s.llm.lastOkAt ? 'bad' : 'ok'}"></span> AI ready` : '<span class="dot bad"></span> No AI key';
+  $('#foot').innerHTML = `${tg}<br>${llm}<br><a href="#" id="logout" style="color:inherit">Sign out</a>`;
+  $('#logout').onclick = act(async (e) => { e.preventDefault(); await api('/api/logout', { method: 'POST', body: {} }); location.reload(); });
+}
+function go(v) { state.view = v; closeDrawer(); renderNav(); render(); }
+
+async function render() {
+  const titles = { pipeline: 'Pipeline', leads: 'All leads', chat: 'Test chat', sim: 'Simulator', settings: 'Settings' };
+  $('#title').textContent = titles[state.view];
+  $('#topActions').innerHTML = '';
+  ({ pipeline: viewPipeline, leads: viewLeads, chat: viewChat, sim: viewSim, settings: viewSettings })[state.view]();
+}
+
+// ---------- data ----------
+async function loadLeads() {
+  const q = new URLSearchParams(); if (!state.includeSim) q.set('sim', '0'); if (state.filter) q.set('q', state.filter);
+  const [l, s] = await Promise.all([api(`/api/leads?${q}`), api(`/api/stats?${state.includeSim ? '' : 'sim=0'}`)]);
+  state.leads = l.leads; state.stats = s;
+}
+async function refreshBoot() { state.boot = await api('/api/bootstrap'); renderFoot(); }
+
+// ---------- pipeline ----------
+function statStrip(s) {
+  const c = (id) => s.byStage[id] || 0;
+  return `<div class="stats">
+    <div class="stat"><b>${s.total}</b><span>Total leads</span></div>
+    <div class="stat"><b style="color:var(--active)">${c('active')}</b><span>Active</span></div>
+    <div class="stat"><b style="color:var(--nurture)">${c('nurture')}</b><span>Nurtured</span></div>
+    <div class="stat"><b style="color:var(--disqualified)">${c('disqualified')}</b><span>Disqualified</span></div>
+    <div class="stat"><b>${s.qualified_rate == null ? '-' : s.qualified_rate + '%'}</b><span>Qualified rate</span></div>
+    <div class="stat"><b>${s.hours_saved}h</b><span>Screening time saved</span></div>
+  </div>`;
+}
+function leadCard(l) {
+  const facts = [l.project_type, l.city].filter(Boolean).join(' / ');
+  const tags = [];
+  if (l.budget_amount != null) tags.push(`<span class="tag">${money(l.budget_amount)}</span>`);
+  if (timeline(l)) tags.push(`<span class="tag">${esc(timeline(l))}</span>`);
+  if (l.designer) tags.push(`<span class="tag">${esc(l.designer)}</span>`);
+  if (l.ai_paused) tags.push('<span class="tag" style="color:var(--human)">AI paused</span>');
+  if (l.channel === 'sim') tags.push('<span class="tag sim">sim</span>');
+  if (l.stage === 'new' && !l.has_chat) tags.push('<span class="tag">not on Telegram yet</span>');
+  return `<div class="lead s-${l.stage}" data-id="${l.id}">
+    <div class="n"><span>${esc(l.name || 'Unknown')}</span><span class="score">${l.score}</span></div>
+    <div class="meta">${esc(facts || l.source || '')} &middot; ${ago(l.updated_at)}</div>
+    ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
+    ${l.stage_reason ? `<div class="why">${esc(l.stage_reason)}</div>` : ''}
+  </div>`;
+}
+async function viewPipeline() {
+  $('#topActions').innerHTML = `<label class="toggle"><input type="checkbox" id="simT" ${state.includeSim ? 'checked' : ''}> Include simulated leads</label>
+    <button class="btn" id="addLead">+ Add lead</button><a class="btn" href="/api/export.csv">Export CSV</a>`;
+  $('#simT').onchange = (e) => { state.includeSim = e.target.checked; render(); };
+  $('#addLead').onclick = openAddLead;
+  await loadLeads();
+  const cols = STAGES.map((st) => {
+    const items = state.leads.filter((l) => l.stage === st);
+    return `<div class="col ${st}"><h4><span>${LABEL[st]}</span><i>${items.length}</i></h4>
+      ${items.length ? items.map(leadCard).join('') : `<div class="empty">${BLURB[st]}</div>`}</div>`;
+  }).join('');
+  $('#view').innerHTML = statStrip(state.stats) + `<div style="overflow-x:auto"><div class="board">${cols}</div></div>`;
+  $('#view').querySelectorAll('.lead').forEach((el) => el.onclick = () => openLead(Number(el.dataset.id)));
+}
+
+// ---------- all leads ----------
+async function viewLeads() {
+  $('#topActions').innerHTML = `<input id="q" placeholder="Search name, phone, city..." style="width:240px" value="${esc(state.filter)}">
+    <label class="toggle"><input type="checkbox" id="simT" ${state.includeSim ? 'checked' : ''}> Include simulated</label><a class="btn" href="/api/export.csv">Export CSV</a>`;
+  $('#simT').onchange = (e) => { state.includeSim = e.target.checked; render(); };
+  let t; $('#q').oninput = (e) => { state.filter = e.target.value; clearTimeout(t); t = setTimeout(renderRows, 250); };
+  await renderRows();
+  async function renderRows() {
+    await loadLeads();
+    $('#view').innerHTML = `<table><thead><tr><th>Lead</th><th>Stage</th><th>Project</th><th>Budget</th><th>Timeline</th><th>Score</th><th>Designer</th><th>Updated</th></tr></thead><tbody>
+      ${state.leads.map((l) => `<tr class="click" data-id="${l.id}"><td><b>${esc(l.name || 'Unknown')}</b><div class="mute">${esc(l.phone || l.tg_username || '')}</div></td>
+      <td><span class="badge ${l.stage}">${LABEL[l.stage]}</span></td><td>${esc([l.project_type, l.city].filter(Boolean).join(' / '))}</td>
+      <td>${l.budget_amount != null ? money(l.budget_amount) : ''}</td><td>${esc(timeline(l) || '')}</td><td>${l.score}</td><td>${esc(l.designer || '')}</td><td>${ago(l.updated_at)}</td></tr>`).join('') || '<tr><td colspan="8" class="empty">No leads yet.</td></tr>'}
+      </tbody></table>`;
+    $('#view').querySelectorAll('tr.click').forEach((el) => el.onclick = () => openLead(Number(el.dataset.id)));
+  }
+}
+
+// ---------- add lead ----------
+function openAddLead() {
+  const d = $('#drawer');
+  d.innerHTML = `<div class="dh"><div style="flex:1"><h2>Add a lead</h2><div class="mute">Simulates a form submission or captures a lead manually.</div></div><button class="btn sm" id="dx">Close</button></div>
+  <div class="db"><label>Name</label><input id="an"><label>Phone</label><input id="ap" placeholder="+91 98765 43210"><label>Email (optional)</label><input id="ae">
+  <div class="grid2"><div><label>Project type</label><input id="at" list="ptl"></div><div><label>City</label><input id="ac"></div></div>
+  <datalist id="ptl">${state.boot.settings.qualification.project_types.map((p) => `<option value="${esc(p)}">`).join('')}</datalist>
+  <button class="btn primary" style="margin-top:16px" id="asave">Create lead</button><div id="aout" class="sec"></div></div>`;
+  openDrawerEl(); $('#dx').onclick = closeDrawer;
+  $('#asave').onclick = act(async () => {
+    const r = await api('/api/leads', { method: 'POST', body: { name: $('#an').value, phone: $('#ap').value, email: $('#ae').value, project_type: $('#at').value, city: $('#ac').value, source: 'admin' } });
+    $('#aout').innerHTML = `<div class="card"><b>Lead created.</b><p class="mute">They enter the chat when they open the Telegram link:</p>${r.telegram_url ? `<p><a href="${esc(r.telegram_url)}" target="_blank"><code>${esc(r.telegram_url)}</code></a></p>` : '<p class="mute">Telegram bot not configured yet.</p>'}</div>`;
+    toast('Lead created'); if (state.view === 'pipeline' || state.view === 'leads') render();
+  });
+}
+
+// ---------- lead drawer ----------
+function openDrawerEl() { $('#drawer').classList.add('open'); $('#scrim').classList.add('open'); }
+function closeDrawer() { $('#drawer').classList.remove('open'); $('#scrim').classList.remove('open'); state.openLead = null; }
+$('#scrim').onclick = closeDrawer;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+async function openLead(id, { keepScroll } = {}) {
+  state.openLead = id;
+  const d = await api(`/api/leads/${id}`);
+  const l = d.lead; const boot = state.boot;
+  const el = $('#drawer'); const prev = keepScroll ? $('#drawer .db') : null; const sc = prev ? prev.scrollTop : 0;
+  const chatEl = $('#drawer .chat'); const chatSc = chatEl ? chatEl.scrollTop : null; const nearBottom = chatEl ? chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 60 : true;
+  const keepFocus = document.activeElement && document.activeElement.id; const keepVal = keepFocus ? document.activeElement.value : null;
+  const stageOpts = STAGES.map((s) => `<option value="${s}" ${l.stage === s ? 'selected' : ''}>${LABEL[s]}</option>`).join('');
+  const desOpts = `<option value="">Unassigned</option>` + boot.designers.filter((x) => x.active || x.id === l.designer_id).map((x) => `<option value="${x.id}" ${l.designer_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  const fl = (k, label, v, type = 'text') => `<div><label>${label}</label><input data-f="${k}" type="${type}" value="${esc(v ?? '')}"></div>`;
+  el.innerHTML = `
+  <div class="dh">
+    <div style="flex:1;min-width:0">
+      <h2>${esc(l.name || 'Unknown')} <span class="badge ${l.stage}" style="vertical-align:middle">${LABEL[l.stage]}</span></h2>
+      <div class="mute" style="margin-top:3px">${esc(l.stage_reason || '')}${l.stage_locked ? ' (manual override)' : ''}</div>
+      <div class="row" style="margin-top:6px"><span class="score">Score ${l.score}/100</span>
+        ${l.ai_paused ? '<span class="tag" style="color:var(--human)">AI paused</span>' : ''}${l.opted_out ? '<span class="tag">opted out</span>' : ''}${l.channel === 'sim' ? '<span class="tag sim">simulated</span>' : ''}
+        ${l.tg_username ? `<span class="tag">@${esc(l.tg_username)}</span>` : ''}</div>
+    </div>
+    <button class="btn sm" id="dx">Close</button>
+  </div>
+  <div class="db">
+    ${d.telegram_url ? `<div class="card" style="margin-bottom:14px"><b>Hasn't opened Telegram yet.</b><div class="mute" style="margin:4px 0 6px">Chat link for this lead:</div><code>${esc(d.telegram_url)}</code></div>` : ''}
+    ${l.summary ? `<div class="card" style="margin-bottom:14px"><b>Conversation summary</b><div class="mute" style="margin-top:4px">${esc(l.summary)}</div></div>` : ''}
+    <div class="sec" style="margin-top:0"><h3>Details <span class="mute" style="font-weight:400">(editable, saved on blur)</span></h3>
+      <div class="facts">${fl('name', 'Name', l.name)}${fl('phone', 'Phone', l.phone)}${fl('email', 'Email', l.email)}${fl('city', 'City', l.city)}
+        ${fl('project_type', 'Project type', l.project_type)}${fl('budget_amount', `Budget (${state.boot.settings.qualification.currency}, full amount)`, l.budget_amount, 'number')}
+        ${fl('timeline_months', 'Timeline (months)', l.timeline_months, 'number')}${fl('timeline_text', 'Timeline (their words)', l.timeline_text)}</div>
+      <label>Notes</label><textarea data-f="notes">${esc(l.notes || '')}</textarea>
+      <div class="mute" style="margin-top:6px">Source: ${esc(l.source || 'n/a')}${l.campaign ? ` / ${esc(l.campaign)}` : ''} &middot; created ${ago(l.created_at)}</div>
+    </div>
+    <div class="sec"><h3>Funnel controls</h3>
+      <div class="grid2"><div><label>Category</label><select id="stageSel">${stageOpts}</select></div><div><label>Assigned designer</label><select id="desSel">${desOpts}</select></div></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sm" id="setStage">Move to selected category</button>
+        ${l.stage_locked ? '<button class="btn sm" id="unlock">Let AI decide again</button>' : ''}
+        <button class="btn sm" id="pauseBtn">${l.ai_paused ? 'Resume AI' : 'Pause AI (take over)'}</button>
+        <button class="btn sm" id="nudgeBtn" ${l.has_chat ? '' : 'disabled'}>Send follow-up now</button>
+      </div>
+      <div class="mute" style="margin-top:8px">Follow-ups sent: ${d.meta.followups_sent} &middot; nurture check-ins: ${d.meta.drips_sent}${Object.keys(d.meta.declined).length ? ` &middot; declined: ${Object.keys(d.meta.declined).join(', ')}` : ''}</div>
+    </div>
+    <div class="sec"><h3>Conversation</h3>
+      <div class="chat" id="chatBox">${d.messages.map((m) => `<div class="msg ${m.direction === 'in' ? 'in' : m.role === 'admin' ? 'admin' : 'out'} ${m.status}"><div>${esc(m.text)}</div><small>${m.direction === 'in' ? 'Customer' : m.role === 'admin' ? 'You' : 'AI'} &middot; ${timeOf(m.created_at)}${m.status === 'pending' ? ' &middot; sending' : ''}${m.status === 'failed' ? ' &middot; FAILED: ' + esc(m.error || '') : ''}</small></div>`).join('') || '<div class="empty">No messages yet.</div>'}</div>
+      ${l.has_chat ? `<div class="row" style="margin-top:10px;align-items:flex-start"><textarea id="manual" placeholder="Write a message to send as a human..." style="flex:1;min-height:44px"></textarea><div><button class="btn primary" id="sendManual">Send</button></div></div>
+      <label class="toggle" style="margin-top:6px"><input type="checkbox" id="pauseOnSend" checked> Pause the AI when I send</label>` : ''}
+    </div>
+    <div class="sec"><h3>Activity</h3><div class="events">${d.events.map((e) => `<div><b>${esc(e.type.replace(/_/g, ' '))}</b> ${esc(eventText(e))} <span style="float:right">${ago(e.created_at)}</span></div>`).join('')}</div></div>
+    <div class="sec row"><button class="btn sm" id="resetLead">Reset conversation</button><button class="btn sm danger" id="delLead">Delete lead</button></div>
+  </div>`;
+  openDrawerEl();
+  const db = $('#drawer .db'); if (keepScroll) db.scrollTop = sc;
+  const cb = $('#chatBox'); if (cb) cb.scrollTop = nearBottom || chatSc === null ? cb.scrollHeight : chatSc;
+  if (keepFocus && keepFocus !== 'undefined') { const f = document.getElementById(keepFocus); if (f && keepVal !== null && f.tagName !== 'BUTTON') { f.value = keepVal; f.focus(); } }
+  $('#dx').onclick = closeDrawer;
+  el.querySelectorAll('[data-f]').forEach((i) => i.onchange = act(async () => {
+    await api(`/api/leads/${id}`, { method: 'PATCH', body: { [i.dataset.f]: i.value } }); toast('Saved');
+  }));
+  $('#desSel').onchange = act(async (e) => { await api(`/api/leads/${id}`, { method: 'PATCH', body: { designer_id: e.target.value || null } }); toast('Designer updated'); });
+  $('#setStage').onclick = act(async () => { await api(`/api/leads/${id}`, { method: 'PATCH', body: { stage: $('#stageSel').value } }); toast('Category set manually'); });
+  if ($('#unlock')) $('#unlock').onclick = act(async () => { await api(`/api/leads/${id}`, { method: 'PATCH', body: { unlock: true } }); toast('AI is deciding again'); });
+  $('#pauseBtn').onclick = act(async () => { await api(`/api/leads/${id}`, { method: 'PATCH', body: { ai_paused: !l.ai_paused } }); toast(l.ai_paused ? 'AI resumed' : 'AI paused'); });
+  $('#nudgeBtn').onclick = act(async () => { await api(`/api/leads/${id}/nudge`, { method: 'POST', body: { kind: l.stage === 'nurture' ? 'drip' : 'followup' } }); toast('Follow-up sent'); });
+  if ($('#sendManual')) $('#sendManual').onclick = act(async () => {
+    const t = $('#manual').value.trim(); if (!t) return;
+    await api(`/api/leads/${id}/message`, { method: 'POST', body: { text: t, pause: $('#pauseOnSend').checked } }); $('#manual').value = ''; toast('Sent');
+  });
+  $('#resetLead').onclick = act(async () => { if (!confirm('Wipe this conversation and its captured details?')) return; await api(`/api/leads/${id}/reset`, { method: 'POST', body: {} }); toast('Reset'); });
+  $('#delLead').onclick = act(async () => { if (!confirm('Delete this lead permanently?')) return; await api(`/api/leads/${id}`, { method: 'DELETE' }); closeDrawer(); toast('Deleted'); render(); });
+}
+function eventText(e) {
+  const d = e.data || {};
+  if (e.type === 'stage_changed') return `${LABEL[d.from] || d.from} to ${LABEL[d.to] || d.to}${d.reason ? `: ${d.reason}` : ''}`;
+  if (e.type === 'facts_updated') return (d.fields || []).join(', ');
+  if (e.type === 'designer_assigned') return d.designer;
+  if (e.type === 'llm_error' || e.type === 'send_failed') return d.error || '';
+  if (e.type === 'followup_sent' || e.type === 'drip_sent') return `#${d.n}`;
+  return '';
+}
+
+// ---------- test chat ----------
+async function viewChat() {
+  $('#topActions').innerHTML = `<button class="btn" id="newChat">New test customer</button>`;
+  $('#newChat').onclick = () => { state.chatLeadId = null; viewChat(); };
+  $('#view').innerHTML = `<div class="grid2" style="grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start">
+    <div class="card"><h3>Chat as the customer</h3><div class="mute" style="margin-bottom:10px">Runs through the exact same agent, rules and CRM as Telegram. Use this as a backup if Telegram is slow on demo day.</div>
+      <div id="tcStart" style="display:none"><label>Customer name</label><input id="tcName" value="Test Customer"><button class="btn primary" style="margin-top:10px" id="tcGo">Start (the bot greets first, like after a form submit)</button></div>
+      <div id="tcLive" style="display:none"><div class="chat" id="tcBox" style="max-height:420px;min-height:260px"></div>
+        <div class="row" style="margin-top:10px"><input id="tcIn" placeholder="Type as the customer..." style="flex:1"><button class="btn primary" id="tcSend">Send</button></div></div></div>
+    <div class="card" id="tcState"><h3>What the CRM sees, live</h3><div class="mute">Start a chat to watch the lead card fill in.</div></div></div>`;
+  $('#tcGo').onclick = act(async () => { const r = await api('/api/chat/test', { method: 'POST', body: { name: $('#tcName').value, phone: '+91 9' + Math.floor(100000000 + Math.random() * 899999999) } }); state.chatLeadId = r.leadId; refreshChat(); });
+  const send = act(async () => { const t = $('#tcIn').value.trim(); if (!t) return; $('#tcIn').value = ''; await api('/api/chat/test', { method: 'POST', body: { leadId: state.chatLeadId, text: t } }); refreshChat(); });
+  $('#tcSend').onclick = send; $('#tcIn').onkeydown = (e) => { if (e.key === 'Enter') send(); };
+  refreshChat();
+}
+async function refreshChat() {
+  if (state.view !== 'chat') return;
+  const start = $('#tcStart'); const live = $('#tcLive'); if (!start) return;
+  if (!state.chatLeadId) { start.style.display = 'block'; live.style.display = 'none'; return; }
+  start.style.display = 'none'; live.style.display = 'block';
+  const d = await api(`/api/leads/${state.chatLeadId}`); const l = d.lead;
+  const box = $('#tcBox'); const bottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  box.innerHTML = d.messages.map((m) => `<div class="msg ${m.direction === 'in' ? 'out' : 'in'}"><div>${esc(m.text)}</div></div>`).join('');
+  if (bottom) box.scrollTop = box.scrollHeight;
+  $('#tcState').innerHTML = `<h3>What the CRM sees, live</h3>
+    <div class="row" style="margin:8px 0"><span class="badge ${l.stage}">${LABEL[l.stage]}</span><span class="score">Score ${l.score}</span></div>
+    <div class="mute" style="margin-bottom:10px">${esc(l.stage_reason || '')}</div>
+    <table><tbody>${[['Name', l.name], ['Project', l.project_type], ['City', l.city], ['Budget', l.budget_amount != null ? money(l.budget_amount) : ''], ['Timeline', timeline(l)], ['Designer', l.designer], ['Notes', l.notes]].map(([k, v]) => `<tr><td class="mute" style="width:90px">${k}</td><td>${esc(v || '')}</td></tr>`).join('')}</tbody></table>
+    <div class="row" style="margin-top:10px"><button class="btn sm" id="tcOpen">Open full lead</button></div>
+    <div class="events sec">${d.events.slice(0, 8).map((e) => `<div><b>${esc(e.type.replace(/_/g, ' '))}</b> ${esc(eventText(e))}</div>`).join('')}</div>`;
+  $('#tcOpen').onclick = () => openLead(l.id);
+}
+
+// ---------- simulator ----------
+async function viewSim() {
+  $('#topActions').innerHTML = `<button class="btn danger" id="simClear">Delete simulated leads</button>`;
+  $('#simClear').onclick = act(async () => { if (!confirm('Delete all simulated leads?')) return; await api('/api/sim/clear', { method: 'POST', body: {} }); toast('Cleared'); viewSim(); });
+  state.sim = await api('/api/sim/state');
+  const ps = state.boot.personas;
+  $('#view').innerHTML = `<div class="card" style="margin-bottom:16px"><h3>Run synthetic customers through the funnel</h3>
+    <div class="mute" style="margin-bottom:10px">Each persona is an AI playing a very different customer (rich, broke, vague, rude, Hinglish, even a prompt-injection attempt). They chat with your real agent and land in the real pipeline.</div>
+    <div class="chk" id="persona">${ps.map((p) => `<label><input type="checkbox" value="${p.id}" checked> ${esc(p.label)} <span class="mute">(${esc(p.name)})</span></label>`).join('')}</div>
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="simRun">Run simulation</button><span class="mute" id="simHint"></span></div></div>
+    <div id="simRes"></div>`;
+  $('#simRun').onclick = act(async () => {
+    const ids = [...document.querySelectorAll('#persona input:checked')].map((i) => i.value);
+    if (!ids.length) return toast('Pick at least one persona', true);
+    state.sim = await api('/api/sim/run', { method: 'POST', body: { personas: ids, concurrency: 3 } }); renderSim();
+  });
+  renderSim();
+}
+function renderSim() {
+  if (state.view !== 'sim' || !$('#simRes')) return;
+  const s = state.sim; if (!s || !s.runs.length) { $('#simRes').innerHTML = ''; return; }
+  const done = s.runs.filter((r) => r.status === 'done'); const ok = done.filter((r) => r.ok).length;
+  $('#simRun').disabled = s.running; $('#simHint').textContent = s.running ? `Running... ${done.length}/${s.runs.length} finished` : `${ok}/${s.runs.length} landed where the rules say they should`;
+  $('#simRes').innerHTML = `<table><thead><tr><th>Customer</th><th>Status</th><th>Turns</th><th>Funnel decision</th><th>Expected</th><th></th></tr></thead><tbody>
+    ${s.runs.map((r) => `<tr class="${r.leadId ? 'click' : ''}" data-id="${r.leadId || ''}"><td><b>${esc(r.label)}</b><div class="mute">${esc(r.name)}</div></td>
+    <td>${r.status === 'running' ? '<span class="dot warn"></span> chatting' : r.status === 'done' ? 'done' : r.status === 'error' ? `<span class="pill-bad">error</span> ${esc(r.error || '')}` : 'queued'}</td><td>${r.turns || ''}</td>
+    <td>${r.stage ? `<span class="badge ${r.stage}">${LABEL[r.stage]}</span>` : ''}</td><td class="mute">${esc(r.expected ? r.expected : '')}</td>
+    <td>${r.ok === true ? '<span class="pill-ok">PASS</span>' : r.ok === false ? '<span class="pill-bad">MISS</span>' : ''}</td></tr>`).join('')}</tbody></table>`;
+  $('#simRes').querySelectorAll('tr.click').forEach((el) => el.onclick = () => el.dataset.id && openLead(Number(el.dataset.id)));
+}
+
+// ---------- settings ----------
+const TABS = [['bar', 'Qualification bar'], ['biz', 'Business & agent'], ['designers', 'Designers'], ['follow', 'Follow-ups'], ['integ', 'Integrations']];
+function viewSettings() {
+  $('#view').innerHTML = `<div class="tabs">${TABS.map(([id, l]) => `<button data-t="${id}" class="${state.settingsTab === id ? 'on' : ''}">${l}</button>`).join('')}</div><div id="tabBody"></div>`;
+  $('#view').querySelectorAll('.tabs button').forEach((b) => b.onclick = () => { state.settingsTab = b.dataset.t; viewSettings(); });
+  ({ bar: tabBar, biz: tabBiz, designers: tabDesigners, follow: tabFollow, integ: tabInteg })[state.settingsTab]();
+}
+const S = () => state.boot.settings;
+const val = (id) => document.getElementById(id).value;
+const chk = (id) => document.getElementById(id).checked;
+const lines = (s) => String(s).split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+async function saveSettings(patch, msg = 'Saved') {
+  const r = await api('/api/settings', { method: 'PUT', body: patch }); state.boot.settings = r.settings; toast(msg); return r;
+}
+
+function tabBar() {
+  const q = S().qualification; const cur = q.currency;
+  const unit = cur === 'INR' ? 100000 : 1000; const unitLabel = cur === 'INR' ? 'lakh' : 'thousand';
+  const max = Math.max(60, Math.ceil(q.min_budget / unit * 2 / 5) * 5);
+  $('#tabBody').innerHTML = `<div class="grid2" style="grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start">
+    <div class="card"><h3>Minimum budget</h3><div class="mute">Leads whose stated budget is below this are disqualified automatically.</div>
+      <div class="big" id="minShow" style="margin:10px 0 2px">${money(q.min_budget)}</div>
+      <input type="range" id="minRange" min="0" max="${max}" step="${cur === 'INR' ? 0.5 : 1}" value="${q.min_budget / unit}">
+      <div class="row" style="margin-top:6px"><input id="minNum" type="number" min="0" value="${q.min_budget}" style="width:160px"><span class="mute">full amount in ${cur} (slider is in ${unitLabel}s)</span></div>
+      <div class="grid2"><div><label>Borderline band (%)</label><input id="band" type="number" min="0" max="50" value="${q.borderline_pct}"><div class="mute" style="font-size:12px;margin-top:3px">Budgets this far below the minimum are Nurtured instead of Disqualified.</div></div>
+      <div><label>"Active" means starting within (months)</label><input id="within" type="number" min="0" value="${q.active_within_months}"><div class="mute" style="font-size:12px;margin-top:3px">Qualified leads starting later are Nurtured.</div></div></div>
+      <label>Required before categorising</label><div class="chk" id="req">${['project_type', 'city', 'budget', 'timeline'].map((f) => `<label><input type="checkbox" value="${f}" ${q.required.includes(f) ? 'checked' : ''}> ${f.replace('_', ' ')}</label>`).join('')}</div>
+      <div class="grid2"><div><label>Cities we serve (blank = anywhere)</label><textarea id="cities" placeholder="Pune, Mumbai">${esc(q.service_cities.join(', '))}</textarea></div>
+      <div><label>Project types (used by the form and the agent)</label><textarea id="ptypes">${esc(q.project_types.join(', '))}</textarea></div></div>
+      <div class="grid2"><div><label>Currency</label><select id="cur">${['INR', 'USD', 'EUR', 'GBP', 'AED'].map((c) => `<option ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+      <div><label>Tell disqualified leads the minimum?</label><select id="reveal"><option value="0" ${S().agent.reveal_minimum ? '' : 'selected'}>No, keep it private</option><option value="1" ${S().agent.reveal_minimum ? 'selected' : ''}>Yes, mention it politely</option></select></div></div>
+      <div class="row" style="margin-top:16px"><button class="btn primary" id="saveBar">Save</button><button class="btn" id="applyBar">Save and re-categorise existing leads</button></div>
+    </div>
+    <div class="card"><h3>What-if preview</h3><div class="mute">How your current leads would be categorised with the numbers on the left (nothing changes until you save).</div>
+      <div id="whatif" style="margin-top:12px"></div></div></div>`;
+  const patch = () => ({ qualification: { min_budget: Number(val('minNum')) || 0, borderline_pct: Number(val('band')) || 0, active_within_months: Number(val('within')) || 0,
+    required: [...document.querySelectorAll('#req input:checked')].map((i) => i.value), service_cities: lines(val('cities')), project_types: lines(val('ptypes')), currency: val('cur') },
+    agent: { reveal_minimum: val('reveal') === '1' } });
+  let t; const preview = () => { clearTimeout(t); t = setTimeout(act(async () => {
+    const r = await api('/api/settings/preview', { method: 'POST', body: { patch: patch(), includeSim: state.includeSim } }); drawWhatIf(r);
+  }), 250); };
+  $('#minRange').oninput = (e) => { const v = Number(e.target.value) * unit; $('#minNum').value = v; $('#minShow').textContent = money(v); preview(); };
+  $('#minNum').oninput = (e) => { $('#minRange').value = Number(e.target.value) / unit; $('#minShow').textContent = money(Number(e.target.value)); preview(); };
+  ['band', 'within', 'cities', 'cur'].forEach((id) => $('#' + id).oninput = preview); $('#req').onchange = preview;
+  $('#saveBar').onclick = act(async () => { await saveSettings(patch(), 'Saved. New conversations use this immediately.'); tabBar(); });
+  $('#applyBar').onclick = act(async () => { await saveSettings(patch()); const r = await api('/api/settings/reevaluate', { method: 'POST', body: {} }); toast(`Saved. ${r.moved} lead(s) moved category.`); tabBar(); });
+  preview();
+}
+function drawWhatIf(r) {
+  const el = $('#whatif'); if (!el) return;
+  const bar = (m) => { const tot = Math.max(1, r.total); return `<div class="bar">${STAGES.filter((s) => m[s]).map((s) => `<div style="flex:${m[s]};background:var(--${s})" title="${LABEL[s]}: ${m[s]}">${m[s]}</div>`).join('')}</div>`; };
+  const legend = `<div class="row" style="margin-top:8px;gap:10px">${STAGES.map((s) => `<span style="font-size:12px"><span class="dot" style="background:var(--${s})"></span> ${LABEL[s]}</span>`).join('')}</div>`;
+  if (!r.total) { el.innerHTML = '<div class="empty">No leads yet. Run the simulator, then come back and drag the slider.</div>'; return; }
+  el.innerHTML = `<div class="mute" style="margin-bottom:4px">Now (${r.total} leads)</div>${bar(r.before)}<div class="mute" style="margin:12px 0 4px">With these settings</div>${bar(r.after)}${legend}
+    <div style="margin-top:14px"><b>${r.moved.length}</b> lead${r.moved.length === 1 ? '' : 's'} would change category</div>
+    <div class="moved">${r.moved.map((m) => `<div><b>${esc(m.name)}</b> ${m.budget != null ? `(${money(m.budget)})` : ''}: ${LABEL[m.from]} &rarr; <span class="badge ${m.to}">${LABEL[m.to]}</span></div>`).join('')}</div>`;
+}
+
+function tabBiz() {
+  const b = S().business; const a = S().agent;
+  $('#tabBody').innerHTML = `<div class="grid2" style="gap:18px;align-items:start">
+    <div class="card"><h3>Business</h3><div class="mute">The agent only talks about what is written here. Edit it to rebrand the demo for any client.</div>
+      <label>Business name</label><input id="bn" value="${esc(b.name)}"><label>Tagline</label><input id="bt" value="${esc(b.tagline)}">
+      <label>Description</label><textarea id="bd">${esc(b.description)}</textarea>
+      <label>Services (one per line)</label><textarea id="bs">${esc(b.services.join('\n'))}</textarea>
+      <label>Areas served</label><input id="ba" value="${esc(b.areas)}">
+      <label>Pricing policy</label><textarea id="bp">${esc(b.pricing_note)}</textarea>
+      <label>Other facts the agent may use (timelines, process, USPs)</label><textarea id="be" style="min-height:90px">${esc(b.extra_knowledge)}</textarea></div>
+    <div class="card"><h3>Agent persona</h3>
+      <div class="grid2"><div><label>Name</label><input id="an2" value="${esc(a.name)}"></div><div><label>Title</label><input id="at2" value="${esc(a.title)}"></div></div>
+      <label>Tone</label><input id="atone" value="${esc(a.tone)}"><label>Languages</label><input id="alang" value="${esc(a.languages)}">
+      <label>Extra guidance (optional)</label><textarea id="aex" placeholder="e.g. Always mention our free site visit.">${esc(a.extra_instructions)}</textarea>
+      <button class="btn primary" style="margin-top:16px" id="saveBiz">Save</button></div></div>`;
+  $('#saveBiz').onclick = act(async () => saveSettings({
+    business: { name: val('bn'), tagline: val('bt'), description: val('bd'), services: lines(val('bs')), areas: val('ba'), pricing_note: val('bp'), extra_knowledge: val('be') },
+    agent: { name: val('an2'), title: val('at2'), tone: val('atone'), languages: val('alang'), extra_instructions: val('aex') },
+  }));
+}
+
+function tabDesigners() {
+  const list = state.boot.designers;
+  $('#tabBody').innerHTML = `<div class="mute" style="margin-bottom:12px">Qualified (Active) leads are assigned to the best-matching designer by project type, city and budget, with the lightest workload winning ties. The agent names them in its closing message.</div>
+  <div class="grid2" style="gap:18px;align-items:start"><div>${list.map((d) => `<div class="card" style="margin-bottom:10px;${d.active ? '' : 'opacity:.55'}"><div class="row"><div style="flex:1"><b>${esc(d.name)}</b> <span class="mute">${esc(d.title || '')}</span>
+    <div class="mute" style="font-size:12px;margin-top:2px">${esc(d.specialties || 'Any project')} &middot; ${esc(d.cities || 'Any city')}${d.min_budget ? ` &middot; min ${money(d.min_budget)}` : ''}</div></div>
+    <button class="btn sm" data-edit="${d.id}">Edit</button></div></div>`).join('') || '<div class="empty">No designers yet.</div>'}</div>
+  <div class="card" id="dform"></div></div>`;
+  const form = (d = {}) => {
+    $('#dform').innerHTML = `<h3>${d.id ? 'Edit designer' : 'Add designer'}</h3>
+      <div class="grid2"><div><label>Name</label><input id="dn" value="${esc(d.name || '')}"></div><div><label>Title</label><input id="dt" value="${esc(d.title || '')}"></div>
+      <div><label>Phone</label><input id="dp" value="${esc(d.phone || '')}"></div><div><label>Telegram chat ID (for lead alerts)</label><input id="dc" value="${esc(d.telegram_chat_id || '')}"></div></div>
+      <label>Project types they handle (comma separated, blank = any)</label><input id="ds" value="${esc(d.specialties || '')}" placeholder="Full home, Modular kitchen">
+      <div class="grid2"><div><label>Cities (blank = any)</label><input id="dci" value="${esc(d.cities || '')}"></div><div><label>Takes projects above (${S().qualification.currency})</label><input id="dm" type="number" value="${d.min_budget || 0}"></div></div>
+      <label>Bio</label><textarea id="db2">${esc(d.bio || '')}</textarea>
+      <label class="toggle" style="margin-top:8px"><input type="checkbox" id="dact" ${d.active === 0 ? '' : 'checked'}> Active (receives leads)</label>
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="dsave">${d.id ? 'Save changes' : 'Add designer'}</button>${d.id ? '<button class="btn danger" id="ddel">Delete</button><button class="btn" id="dnew">New</button>' : ''}</div>`;
+    $('#dsave').onclick = act(async () => {
+      const body = { name: val('dn'), title: val('dt'), phone: val('dp'), telegram_chat_id: val('dc'), specialties: val('ds'), cities: val('dci'), min_budget: Number(val('dm')) || 0, bio: val('db2'), active: chk('dact') };
+      await api(d.id ? `/api/designers/${d.id}` : '/api/designers', { method: d.id ? 'PUT' : 'POST', body });
+      await refreshBoot(); toast('Saved'); tabDesigners();
+    });
+    if (d.id) { $('#ddel').onclick = act(async () => { if (!confirm('Delete this designer?')) return; await api(`/api/designers/${d.id}`, { method: 'DELETE' }); await refreshBoot(); tabDesigners(); }); $('#dnew').onclick = () => form(); }
+  };
+  form();
+  $('#tabBody').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => form(list.find((x) => x.id === Number(b.dataset.edit))));
+}
+
+function tabFollow() {
+  const f = S().followups;
+  $('#tabBody').innerHTML = `<div class="grid2" style="gap:18px;align-items:start"><div class="card"><h3>Automatic follow-ups</h3><div class="mute">If a lead goes quiet mid-conversation, the AI nudges them politely, then moves them to Nurtured. Nurtured leads get occasional check-ins.</div>
+    <label class="toggle" style="margin-top:10px"><input type="checkbox" id="fe" ${f.enabled ? 'checked' : ''}> Follow-ups enabled</label>
+    <div class="grid2"><div><label>First nudge after (minutes)</label><input id="f1" type="number" min="0" value="${f.first_after_min}"></div><div><label>Second nudge after (minutes)</label><input id="f2" type="number" min="0" value="${f.second_after_min}"></div>
+    <div><label>Max nudges</label><input id="fm" type="number" min="0" value="${f.max}"></div><div><label>Nurture check-in every (days)</label><input id="fd" type="number" min="0" value="${f.nurture_every_days}"></div>
+    <div><label>Max nurture check-ins</label><input id="fn" type="number" min="0" value="${f.nurture_max}"></div></div>
+    <button class="btn primary" style="margin-top:14px" id="saveF">Save</button></div>
+    <div class="card"><h3>Fast-forward time (demo)</h3><div class="mute">Instead of waiting an hour, press this to make every silent lead behave as if the waiting period had passed. Each press moves quiet leads one step: nudge 1, nudge 2, then Nurtured. Nurtured leads get a check-in.</div>
+    <button class="btn primary" style="margin-top:12px" id="ff">Run follow-ups now</button><div id="ffOut" class="mute" style="margin-top:10px"></div></div></div>`;
+  $('#saveF').onclick = act(async () => saveSettings({ followups: { enabled: chk('fe'), first_after_min: val('f1'), second_after_min: val('f2'), max: val('fm'), nurture_every_days: val('fd'), nurture_max: val('fn') } }));
+  $('#ff').onclick = act(async () => { const r = await api('/api/scheduler/run', { method: 'POST', body: { force: true, includeSim: state.includeSim } }); $('#ffOut').textContent = `Sent ${r.followups} nudge(s), ${r.drips} check-in(s), moved ${r.stalled} lead(s) to Nurtured.`; });
+}
+
+async function tabInteg() {
+  await refreshBoot();
+  const h = S().handoff; const st = state.boot.status; const base = state.boot.public_url;
+  const botLink = state.boot.telegram_link;
+  $('#tabBody').innerHTML = `<div class="grid2" style="gap:18px;align-items:start">
+  <div><div class="card" style="margin-bottom:16px"><h3>Telegram bot</h3>
+    <p>${st.telegram.enabled ? (st.telegram.connected ? `<span class="pill-ok">Connected</span> as @${esc(st.telegram.username)}` : '<span class="pill-bad">Offline</span> ' + esc(st.telegram.lastError || '')) : '<span class="pill-bad">No token.</span> Create a bot with @BotFather, put the token in <code>.env</code> as TELEGRAM_BOT_TOKEN and restart.'}</p>
+    ${botLink ? `<label>Link to put on the Google Form confirmation</label><code>${esc(botLink)}</code>` : ''}
+    <label>Team alert chat ID</label><input id="nc" value="${esc(h.notify_chat_id)}" placeholder="Send /setup ${'<password>'} to the bot from the team chat">
+    <div class="mute" style="font-size:12px;margin-top:3px">New Active leads, and people who ask for a human, are pushed to this chat.</div>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="saveNc">Save</button><button class="btn" id="testAlert">Send test alert</button></div></div>
+  <div class="card"><h3>Lead sources</h3>
+    <p class="mute">Enquiry form (hosted here, stands in for a Meta lead ad): <a href="${esc(base)}/form" target="_blank"><code>${esc(base)}/form</code></a></p>
+    <p class="mute">Google Form: add the script in <code>integrations/google-form.gs</code>, set its URL to <code>${esc(base)}/api/intake/gform</code> and the secret from <code>.env</code>. Then use the Telegram link above in the form's confirmation message.</p>
+    ${base.startsWith('http://localhost') ? '<p class="pill-bad">Your public URL is localhost. For Google Forms or a phone on another network, expose this server (cloudflared tunnel / ngrok / deploy) and set PUBLIC_URL.</p>' : ''}</div></div>
+  <div><div class="card" style="margin-bottom:16px"><h3>CRM sync (webhook)</h3><div class="mute">Every lead created, updated or recategorised is POSTed as JSON, signed with HMAC-SHA256 (header <code>X-Funnel-Signature</code>) and retried with backoff if the CRM is down. Point it at Zapier, Make, HubSpot, Google Sheets or the client's own system.</div>
+    <label>Webhook URL</label><input id="wu" value="${esc(h.webhook_url)}" placeholder="https://hooks.zapier.com/..."><label>Signing secret</label><input id="ws" value="${esc(h.webhook_secret)}">
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="saveW">Save</button><button class="btn" id="testW">Send test event</button></div>
+    <div class="mute" style="margin-top:8px">Pending: ${st.outbox.pending_webhooks} &middot; gave up: ${st.outbox.dead_webhooks}</div></div>
+  <div class="card"><h3>System health</h3><table><tbody>
+    <tr><td>AI model</td><td>${esc(st.llm.model)}</td></tr><tr><td>Fallback model</td><td>${esc(st.llm.fallback_model)}</td></tr>
+    <tr><td>AI calls / failures / fallbacks</td><td>${st.llm.calls} / ${st.llm.failures} / ${st.llm.fallbacks}</td></tr>
+    <tr><td>Last AI latency</td><td>${st.llm.lastLatencyMs ? st.llm.lastLatencyMs + ' ms' : 'n/a'}</td></tr>
+    <tr><td>Messages waiting to send</td><td>${st.outbox.pending_messages} (failed: ${st.outbox.failed_messages})</td></tr>
+    <tr><td>Conversation turns handled</td><td>${st.engine.turns}</td></tr><tr><td>Uptime</td><td>${Math.round(st.uptime_s / 60)} min</td></tr></tbody></table>
+    <div class="row" style="margin-top:14px"><a class="btn" href="/api/export.csv">Export all leads (CSV)</a><button class="btn danger" id="wipe">Wipe all leads</button></div></div></div></div>`;
+  $('#saveNc').onclick = act(async () => saveSettings({ handoff: { notify_chat_id: val('nc') } }));
+  $('#testAlert').onclick = act(async () => { await saveSettings({ handoff: { notify_chat_id: val('nc') } }, 'Saved'); await api('/api/test-alert', { method: 'POST', body: {} }); toast('Test alert sent'); });
+  $('#saveW').onclick = act(async () => saveSettings({ handoff: { webhook_url: val('wu'), webhook_secret: val('ws') } }));
+  $('#testW').onclick = act(async () => { await saveSettings({ handoff: { webhook_url: val('wu'), webhook_secret: val('ws') } }, 'Saved'); const r = await api('/api/test-webhook', { method: 'POST', body: {} }); toast(r.delivered ? 'Delivered' : 'Queued, delivery failed (will retry)', !r.delivered); });
+  $('#wipe').onclick = act(async () => { const t = prompt('This deletes ALL leads and conversations. Type WIPE to confirm.'); if (t !== 'WIPE') return; await api('/api/demo/wipe', { method: 'POST', body: { confirm: 'WIPE' } }); toast('All leads deleted'); });
+}
+
+// ---------- live updates ----------
+let refreshTimer;
+function connectStream() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = (m) => {
+    let ev = {}; try { ev = JSON.parse(m.data); } catch { return; }
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(async () => {
+      try {
+        if (ev.type === 'sim') { state.sim = await api('/api/sim/state'); renderSim(); }
+        if (state.view === 'pipeline') viewPipelineSoft();
+        if (state.view === 'leads' && document.activeElement.id !== 'q') viewLeads();
+        if (state.view === 'chat') refreshChat();
+        if (state.openLead && (!ev.leadId || ev.leadId === state.openLead) && document.activeElement.tagName !== 'TEXTAREA') openLead(state.openLead, { keepScroll: true });
+      } catch { /* retried on next event */ }
+    }, 350);
+  };
+}
+async function viewPipelineSoft() { const y = $('.content').scrollTop; await viewPipeline(); $('.content').scrollTop = y; }
+
+// ---------- login / boot ----------
+function showLogin() { $('#login').style.display = 'flex'; $('#pw').focus(); }
+$('#loginBtn').onclick = async () => {
+  try {
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('#pw').value }) });
+    if (!r.ok) throw new Error((await r.json()).error || 'Login failed');
+    $('#login').style.display = 'none'; start();
+  } catch (e) { $('#loginErr').textContent = e.message; }
+};
+$('#pw').onkeydown = (e) => { if (e.key === 'Enter') $('#loginBtn').click(); };
+async function start() {
+  await refreshBoot(); renderNav(); connectStream();
+  const m = location.hash.match(/lead=(\d+)/);
+  render(); if (m) openLead(Number(m[1]));
+}
+(async () => {
+  const me = await fetch('/api/me').then((r) => r.json());
+  if (me.admin) start(); else showLogin();
+})();
+</script>
+</body>
+</html>

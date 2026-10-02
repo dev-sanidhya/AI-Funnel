@@ -16,6 +16,7 @@ test('parseAmount handles lakh, crore, k, ranges and commas', () => {
   assert.strictEqual(parseAmount('50k'), 50000);
   assert.strictEqual(parseAmount('Rs 8,00,000'), 800000);
   assert.strictEqual(parseAmount('3 bhk'), null);
+  assert.strictEqual(parseAmount('my budget is 2 lakh, call me on 9876543210'), 200000);
   assert.strictEqual(parseAmount('8', { allowBare: true }), 800000);
   assert.strictEqual(parseAmount('800000', { allowBare: true }), 800000);
 });

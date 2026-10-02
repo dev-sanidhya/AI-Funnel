@@ -43,7 +43,7 @@ function parseAmount(text, { bareUnit = 1e5, allowBare = false } = {}) {
   for (const f of found) {
     let mult;
     if (f.unit) mult = UNIT[f.unit];
-    else if (trailingUnit) mult = UNIT[trailingUnit.unit];
+    else if (trailingUnit && f.n < 1000) mult = UNIT[trailingUnit.unit]; // "8-10 lakh": the unit applies to the range start
     else if (bare) mult = f.n < 1000 ? bareUnit : 1;
     else continue;
     const v = f.n * mult;
