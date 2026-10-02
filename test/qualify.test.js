@@ -20,6 +20,34 @@ test('parseAmount handles lakh, crore, k, ranges and commas', () => {
   assert.strictEqual(parseAmount('800000', { allowBare: true }), 800000);
 });
 
+test('times, sizes and durations are never mistaken for money', () => {
+  const { amountSupportedByText, isBareNumberAnswer } = require('../src/budget');
+  assert.strictEqual(parseAmount('how about next Wednesday at 10 am?', { allowBare: true }), null);
+  assert.strictEqual(parseAmount('3 bhk, start in 2 months', { allowBare: true }), null);
+  assert.strictEqual(isBareNumberAnswer('next Wednesday at 10 am'), false);
+  assert.strictEqual(isBareNumberAnswer('8-10'), true);
+  assert.strictEqual(isBareNumberAnswer('Rs 8,00,000'), true);
+  // An LLM-reported budget must be explained by a number in the customer's own text.
+  assert.strictEqual(amountSupportedByText(1000000, 'tomorrow at 10 am please'), false);
+  assert.strictEqual(amountSupportedByText(1000000, 'about 10 lakh'), true);
+  assert.strictEqual(amountSupportedByText(1000000, 'ten lakh'), true);
+  assert.strictEqual(amountSupportedByText(1000000, 'my budget is unlimited'), false);
+});
+
+test('applyFacts rejects hallucinated budgets and keeps explicit ones', () => {
+  const { applyFacts } = require('../src/facts');
+  const s = S();
+  const base = { meta: {}, stage: 'qualifying' };
+  const bogus = applyFacts(base, { budget_amount: 1000000 }, 'Lets schedule it, Wednesday at 10 am works', { lastAsked: 'budget', settings: s });
+  assert.strictEqual(bogus.patch.budget_amount, undefined);
+  const good = applyFacts(base, { budget_amount: 1200000 }, 'around 12 lakh', { lastAsked: 'budget', settings: s });
+  assert.strictEqual(good.patch.budget_amount, 1200000);
+  const bare = applyFacts(base, {}, '8', { lastAsked: 'budget', settings: s });
+  assert.strictEqual(bare.patch.budget_amount, 800000);
+  const regexWins = applyFacts(base, { budget_amount: 80000000 }, '8 lakh', { lastAsked: null, settings: s });
+  assert.strictEqual(regexWins.patch.budget_amount, 800000);
+});
+
 test('formatMoney', () => {
   assert.strictEqual(formatMoney(500000), '₹5L');
   assert.strictEqual(formatMoney(12000000), '₹1.2Cr');

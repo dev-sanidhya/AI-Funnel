@@ -39,6 +39,8 @@ module.exports = {
     model: env.LLM_MODEL || 'openai/gpt-oss-120b',
     fallbackModel: env.LLM_FALLBACK_MODEL || 'openai/gpt-oss-20b',
     maxRpm: num(env.LLM_MAX_RPM, 120),
+    // Soft tokens-per-minute budget PER MODEL (Groq free tier allows 8000). 0 = unlimited.
+    tpm: num(env.LLM_TPM, 7000),
     timeoutMs: num(env.LLM_TIMEOUT_MS, 25000),
   },
 };

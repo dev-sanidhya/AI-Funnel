@@ -72,7 +72,7 @@ function evaluate(lead, settings, { hasInbound = true } = {}) {
     return { ...base, stage: lead.stage, reason: lead.stage_reason || 'Set manually', score };
   }
   if (lead.ai_paused || flags.wants_human) {
-    return { ...base, stage: 'human', reason: lead.ai_paused ? 'AI paused, human has the conversation' : 'Asked for a human', score };
+    return { ...base, stage: 'human', reason: flags.wants_human ? 'Asked for a human' : 'AI paused, a human has the conversation', score };
   }
   if (flags.not_interested) {
     return { ...base, stage: 'disqualified', reason: 'Said they are not interested', score: Math.min(score, 15) };
