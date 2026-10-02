@@ -115,21 +115,18 @@ function evaluate(lead, settings, { hasInbound = true } = {}) {
 
 // Chooses the best-fit active designer for a lead; ties go to the lightest load.
 function pickDesigner(designers, lead, loads = {}) {
+  // Exact match scores 2, a generalist (empty list) 1, a mismatch 0. A mismatch
+  // lowers the rank but never excludes, so every qualified lead gets an owner;
+  // only a designer's minimum project budget is a hard filter.
   const has = (list, value) => {
     const items = String(list || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    if (!items.length) return 0;
+    if (!items.length) return 1;
     const v = String(value || '').toLowerCase();
-    return v && items.some((i) => v.includes(i) || i.includes(v)) ? 2 : -1;
+    return v && items.some((i) => v.includes(i) || i.includes(v)) ? 2 : 0;
   };
   const ranked = designers
-    .filter((d) => d.active)
-    .map((d) => {
-      const s = has(d.specialties, lead.project_type);
-      const c = has(d.cities, lead.city);
-      const budgetOk = !d.min_budget || (lead.budget_amount ?? Infinity) >= d.min_budget;
-      return { d, fit: s < 0 || c < 0 || !budgetOk ? -1 : Math.max(s, 0) + Math.max(c, 0) };
-    })
-    .filter((x) => x.fit >= 0)
+    .filter((d) => d.active && (!d.min_budget || (lead.budget_amount ?? Infinity) >= d.min_budget))
+    .map((d) => ({ d, fit: has(d.specialties, lead.project_type) + has(d.cities, lead.city) }))
     .sort((a, b) => b.fit - a.fit || (loads[a.d.id] || 0) - (loads[b.d.id] || 0));
   return ranked.length ? ranked[0].d : null;
 }

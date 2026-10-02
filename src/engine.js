@@ -163,6 +163,8 @@ class Engine extends EventEmitter {
   recover() {
     const ids = this.store.all("SELECT DISTINCT lead_id FROM messages WHERE direction='in' AND processed=0").map((r) => r.lead_id);
     for (const id of ids) this.drain(id).catch((e) => this.log.error('[engine] recover failed', e));
+    // Backfill owners for qualified leads created before any designer existed.
+    for (const l of this.store.listLeads({ stage: 'active', limit: 2000 })) if (!l.designer_id) this.assignDesigner(l);
     return ids.length;
   }
 
