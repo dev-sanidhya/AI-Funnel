@@ -22,6 +22,7 @@ function loadEnv(file) {
 loadEnv(path.join(ROOT, '.env'));
 
 const env = process.env;
+const useCloudflare = !!(env.CF_ACCOUNT_ID && env.CF_API_TOKEN);
 const num = (v, d) => (v !== undefined && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : d);
 
 module.exports = {
@@ -33,14 +34,26 @@ module.exports = {
   intakeSecret: env.INTAKE_SECRET || 'change-me',
   demoMode: String(env.DEMO_MODE || 'true') !== 'false',
   telegramToken: env.TELEGRAM_BOT_TOKEN || '',
-  llm: {
-    apiKey: env.LLM_API_KEY || env.GROQ_API_KEY || '',
-    baseUrl: (env.LLM_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, ''),
-    model: env.LLM_MODEL || 'openai/gpt-oss-120b',
-    fallbackModel: env.LLM_FALLBACK_MODEL || 'openai/gpt-oss-20b',
-    maxRpm: num(env.LLM_MAX_RPM, 120),
-    // Soft tokens-per-minute budget PER MODEL (Groq free tier allows 8000). 0 = unlimited.
-    tpm: num(env.LLM_TPM, 7000),
-    timeoutMs: num(env.LLM_TIMEOUT_MS, 25000),
-  },
+  // Cloudflare Workers AI (preferred when CF_* are set) via its OpenAI-compatible
+  // endpoint; otherwise any OpenAI-compatible provider (defaults to Groq).
+  llm: useCloudflare
+    ? {
+      apiKey: env.CF_API_TOKEN,
+      baseUrl: (env.LLM_BASE_URL || `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/ai/v1`).replace(/\/$/, ''),
+      model: env.LLM_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      fallbackModel: env.LLM_FALLBACK_MODEL || '@cf/openai/gpt-oss-120b',
+      maxRpm: num(env.LLM_MAX_RPM, 240),
+      tpm: num(env.LLM_TPM, 0),
+      timeoutMs: num(env.LLM_TIMEOUT_MS, 30000),
+    }
+    : {
+      apiKey: env.LLM_API_KEY || env.GROQ_API_KEY || '',
+      baseUrl: (env.LLM_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, ''),
+      model: env.LLM_MODEL || 'openai/gpt-oss-120b',
+      fallbackModel: env.LLM_FALLBACK_MODEL || 'openai/gpt-oss-20b',
+      maxRpm: num(env.LLM_MAX_RPM, 120),
+      // Soft tokens-per-minute budget PER MODEL (Groq free tier allows 8000). 0 = unlimited.
+      tpm: num(env.LLM_TPM, 6000),
+      timeoutMs: num(env.LLM_TIMEOUT_MS, 25000),
+    },
 };
