@@ -82,6 +82,15 @@
   .done .alt { display:inline-block; margin-top:16px; color:var(--muted); font-size:14px; }
   .done .what { text-align:left; background:var(--soft); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-top:22px; font-size:14.5px; color:var(--muted); }
   .done .what b { color:var(--ink); }
+  .tpl { text-align:left; margin-top:22px; border:1.5px solid var(--line); border-radius:16px; background:var(--soft); padding:16px 18px 14px; }
+  .tpl-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:8px; font-size:14px; }
+  .tpl-head span { color:var(--muted); font-size:13px; }
+  .tpl textarea { width:100%; border:0; background:transparent; font:inherit; font-size:15.5px; line-height:1.55; color:var(--ink); resize:vertical; outline:none; padding:2px 0; min-height:110px; }
+  .tpl-foot { display:flex; align-items:center; gap:12px; border-top:1px solid var(--line); padding-top:12px; margin-top:6px; }
+  .tpl .copy { border:1.5px solid var(--line); background:var(--surface); color:var(--ink); border-radius:10px; padding:8px 14px; font:inherit; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+  .tpl .copy:hover { border-color:var(--brand); color:var(--brand-deep); }
+  .tpl .copy.ok { background:var(--brand-soft); border-color:var(--brand); color:var(--brand-deep); }
+  .tpl-hint { color:var(--muted); font-size:13px; line-height:1.4; }
   .hidden { display:none !important; }
   @media (max-width: 920px) {
     .shell { grid-template-columns:1fr; }
@@ -156,9 +165,14 @@
         <div class="tick"><svg class="i" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
         <h2 id="doneTitle">Thank you, we have your details</h2>
         <p class="sub" id="doneMsg">Opening the chat so we can continue.</p>
+        <div class="tpl hidden" id="tpl">
+          <div class="tpl-head"><b>Your message is ready</b><span>Edit it if you like</span></div>
+          <textarea id="tplText" rows="5" spellcheck="true"></textarea>
+          <div class="tpl-foot"><button type="button" class="copy" id="copyBtn">Copy message</button><span class="tpl-hint" id="tplHint">Tap the button below: we copy it for you, then open the chat. Paste it and press send.</span></div>
+        </div>
         <a class="go hidden" id="goBtn" href="#"><span id="goLabel">Open chat</span></a>
         <a class="alt hidden" id="altBtn" href="#"></a>
-        <div class="what hidden" id="what"><b>What happens next</b><br>Send us a quick "Hi" in the chat. We'll ask a couple of questions, agree a time for a call, and a designer will take it from there.</div>
+        <div class="what hidden" id="what"><b>What happens next</b><br>Paste and send your message in the chat. We'll confirm the details, agree a time for a call, and a designer will take it from there.</div>
       </div>
     </div>
   </section>
@@ -226,6 +240,22 @@ function validate() {
   }
   return true;
 }
+function buildMessage(b) {
+  const first = String(b.name || '').trim().split(/\s+/)[0];
+  const list = (arr) => (arr.length <= 1 ? arr.join('') : arr.slice(0, -1).join(', ') + (arr.some((x) => / and /.test(x)) ? ', plus ' : ' and ') + arr[arr.length - 1]);
+  const scope = list((b.scope || []).map((x) => x.toLowerCase()));
+  const sizeOk = b.size && b.size !== 'Not applicable';
+  const home = [sizeOk ? b.size.replace(' BHK', 'BHK') : '', b.property_type ? b.property_type.toLowerCase() : ''].filter(Boolean).join(' ');
+  const where = [b.locality, b.city].filter((x) => x && x.trim()).join(', ');
+  const parts = [];
+  parts.push(`Hi! I'm ${first}.`);
+  parts.push(`I'd like help with ${scope || 'my project'}${home ? ` for my ${home}` : ''}${where ? ` in ${where}` : ''}.`);
+  if (b.budget && b.budget !== 'Not sure yet') parts.push(`My budget is around ${b.budget}.`);
+  if (b.timeline) parts.push(b.timeline === 'Just exploring' ? "I'm just exploring for now." : b.timeline === 'As soon as possible' ? "I'd like to get started as soon as possible." : `I'd like to get started ${b.timeline.charAt(0).toLowerCase() + b.timeline.slice(1)}.`);
+  if (b.contact_pref && b.contact_pref !== 'Any time') parts.push(`${b.contact_pref} is the best time to reach me.`);
+  if (b.notes && b.notes.trim()) { const n = b.notes.trim().replace(/\s+/g, ' ').slice(0, 200); parts.push(/[.!?]$/.test(n) ? n : n + '.'); }
+  return parts.join(' ');
+}
 $('#back').onclick = () => { if (step > 1) { step--; renderSteps(); } };
 $('#f').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -248,11 +278,21 @@ $('#f').addEventListener('submit', async (e) => {
     if (j.chat_url) {
       const ig = j.primary === 'instagram';
       $('#goBtn').href = j.chat_url; $('#goBtn').classList.remove('hidden'); $('#what').classList.remove('hidden');
-      $('#goLabel').textContent = ig ? 'Continue on Instagram' : 'Continue on Telegram';
-      $('#doneMsg').textContent = ig ? 'Taking you to Instagram. Just send us a quick "Hi" there and we will pick it up from here.' : 'Taking you to Telegram so we can continue.';
+      $('#goLabel').textContent = ig ? 'Copy message and open Instagram' : 'Copy message and open Telegram';
+      $('#doneMsg').textContent = ig ? 'One last step. We have written your message for you, so just paste it into the chat and press send.' : 'One last step. Paste the message into the chat and press send.';
+      $('#tplText').value = buildMessage(body);
+      $('#tpl').classList.remove('hidden');
+      const copyNow = async () => {
+        const text = $('#tplText').value;
+        try { await navigator.clipboard.writeText(text); }
+        catch { const t = $('#tplText'); t.focus(); t.select(); try { document.execCommand('copy'); } catch { /* user can copy by hand */ } }
+        $('#copyBtn').textContent = 'Copied'; $('#copyBtn').classList.add('ok');
+        setTimeout(() => { $('#copyBtn').textContent = 'Copy message'; $('#copyBtn').classList.remove('ok'); }, 2200);
+      };
+      $('#copyBtn').onclick = copyNow;
+      $('#goBtn').onclick = async (ev) => { ev.preventDefault(); await copyNow(); setTimeout(() => { location.href = j.chat_url; }, 350); };
       const alt = ig ? j.telegram_url : j.instagram_url;
       if (alt) { $('#altBtn').href = alt; $('#altBtn').textContent = ig ? 'Prefer Telegram? Continue there' : 'Prefer Instagram? Continue there'; $('#altBtn').classList.remove('hidden'); }
-      setTimeout(() => { location.href = j.chat_url; }, 1800);
     } else {
       $('#doneMsg').textContent = 'Our team will be in touch with you shortly.';
     }

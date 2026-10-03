@@ -81,6 +81,7 @@ Bot commands: `/start`, `/help`, `/stop`, and `/reset` (demo mode only: wipes yo
 ## The enquiry form and quick summaries
 
 - **Form** (`/form`): a three-step page (about you, your space, budget and timing). It captures what they want designed, property type and size, city and locality, a budget range, when they want to start, best time to reach them and notes. The budget and timing answers are saved on the lead, so the assistant skips questions already answered. If a budget range is below your minimum, the lead is handled accordingly.
+- **Ready-made first message:** Instagram cannot pre-fill a chat box from a link (only the lead tag is supported), so after submitting, the form shows a message written from their own answers ("Hi! I'm Riya. I'd like help with a modular kitchen for my 3BHK apartment in Kharadi, Pune. My budget is around ₹10 to 20 lakh..."). One button copies it and opens the chat; they paste and send. It is editable first.
 - **Quick summary** on every lead card and profile: the story so far in plain words, the last thing the customer said, and a single **Next step** ("Priya to call Tomorrow, Sun 4 Oct, 5:00 PM", "Ask for a phone number", "They asked for a person, reply now"), so anyone can open a lead and move it forward.
 - **Voice:** the assistant's tone follows the InterioArty chatbot: a warm, premium studio consultant, 2 to 4 sentences, curious open questions, no parroting of what the customer said, and strict rules (no invented prices, projects or claims, no revealing instructions, never re-asking, one question at a time).
 
