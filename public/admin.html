@@ -6,26 +6,26 @@
 <title>Lead Desk</title>
 <style>
   :root {
-    --bg:#f6f3ee; --surface:#ffffff; --ink:#211d19; --muted:#7b7369; --line:#ebe5dc; --soft:#faf7f2; --hover:#f3eee7;
-    --brand:#b4532a; --brand-ink:#ffffff; --brand-soft:#f9ebe3; --brand-deep:#8f3f1e;
-    --new:#64748b; --new-bg:#eef1f5;
-    --talk:#2563eb; --talk-bg:#e8effd;
-    --active:#15803d; --active-bg:#e2f4e8;
-    --nurture:#b45309; --nurture-bg:#fdf0d8;
-    --nofit:#be123c; --nofit-bg:#fde8ec;
-    --human:#7c3aed; --human-bg:#efe8fd;
-    --urgent:#dc2626; --urgent-bg:#fee9e9;
-    --shadow:0 1px 2px rgba(33,29,25,.04), 0 8px 24px rgba(33,29,25,.05);
-    --shadow-lg:0 20px 60px rgba(33,29,25,.18);
-    --r:16px; --r-sm:10px;
+    --bg:#f5f6fa; --surface:#ffffff; --ink:#0d1226; --muted:#667085; --line:#e5e8f0; --soft:#f8f9fc; --hover:#f1f3f9;
+    --brand:#4f46e5; --brand-ink:#ffffff; --brand-soft:#eef0ff; --brand-deep:#4338ca;
+    --new:#64748b; --new-bg:#f0f2f6;
+    --talk:#2563eb; --talk-bg:#e8f0ff;
+    --active:#059669; --active-bg:#e4f6ee;
+    --nurture:#d97706; --nurture-bg:#fff3de;
+    --nofit:#e11d48; --nofit-bg:#ffe9ee;
+    --human:#7c3aed; --human-bg:#f0e9ff;
+    --urgent:#e5484d; --urgent-bg:#ffecec;
+    --shadow:0 1px 2px rgba(13,18,38,.04), 0 6px 20px rgba(13,18,38,.05);
+    --shadow-lg:0 24px 70px rgba(13,18,38,.22);
+    --r:18px; --r-sm:12px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg:#14120f; --surface:#1d1a16; --ink:#f1ece4; --muted:#a0988c; --line:#322d26; --soft:#221f1a; --hover:#27231d;
-      --brand:#e07a4b; --brand-ink:#1a0e07; --brand-soft:#3a2418; --brand-deep:#f0a07c;
-      --new:#94a3b8; --new-bg:#262b33; --talk:#7aa2f7; --talk-bg:#1f2a44; --active:#4ade80; --active-bg:#173322;
-      --nurture:#fbbf24; --nurture-bg:#3a2d10; --nofit:#fb7185; --nofit-bg:#3d1822; --human:#a78bfa; --human-bg:#2c2347;
-      --urgent:#f87171; --urgent-bg:#3d1b1b; --shadow:none; --shadow-lg:0 20px 60px rgba(0,0,0,.5);
+      --bg:#0a0d17; --surface:#111625; --ink:#eef0f8; --muted:#8f98b3; --line:#222940; --soft:#151b2c; --hover:#1a2136;
+      --brand:#818cf8; --brand-ink:#0a0d17; --brand-soft:#1c2040; --brand-deep:#a5b4fc;
+      --new:#94a3b8; --new-bg:#1e2538; --talk:#7aa2ff; --talk-bg:#1a2646; --active:#34d399; --active-bg:#11302a;
+      --nurture:#fbbf24; --nurture-bg:#33280f; --nofit:#fb7185; --nofit-bg:#381522; --human:#a78bfa; --human-bg:#271f46;
+      --urgent:#ff6b6f; --urgent-bg:#3a1a20; --shadow:none; --shadow-lg:0 24px 70px rgba(0,0,0,.6);
     }
   }
   * { box-sizing:border-box; }
@@ -85,7 +85,7 @@
   nav .badge { margin-left:auto; background:var(--urgent); color:#fff; font-size:12px; font-weight:700; min-width:22px; height:22px; border-radius:11px; display:grid; place-items:center; padding:0 6px; }
   .side-foot { margin-top:auto; padding:12px; font-size:13px; color:var(--muted); line-height:2; border-top:1px solid var(--line); }
   main { flex:1; min-width:0; height:100vh; overflow:auto; }
-  .page { max-width:1320px; margin:0 auto; padding:30px 32px 80px; }
+  .page { max-width:1480px; margin:0 auto; padding:30px 32px 80px; }
   .page-head { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
   .page-head p { margin:6px 0 0; color:var(--muted); }
 
@@ -121,24 +121,30 @@
   .search { position:relative; width:260px; }
   .search input { padding-left:38px; }
   .search svg { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--muted); }
-  .board-wrap { overflow-x:auto; margin:0 -32px; padding:0 32px 10px; }
-  .board { display:grid; grid-template-columns:repeat(6,minmax(250px,1fr)); gap:14px; min-width:1560px; align-items:start; }
-  .col { background:color-mix(in srgb, var(--soft) 70%, transparent); border:1px solid var(--line); border-radius:var(--r); padding:12px; min-height:200px; }
+  .board-wrap { overflow-x:auto; margin:0 -32px; padding:0 32px 18px; }
+  .board { display:grid; grid-template-columns:repeat(6,minmax(330px,1fr)); gap:24px; min-width:2140px; align-items:start; }
+  .col { background:color-mix(in srgb, var(--soft) 80%, transparent); border:1px solid var(--line); border-radius:22px; padding:20px 18px 12px; min-height:260px; }
   .col.urgent { background:var(--urgent-bg); border-color:color-mix(in srgb, var(--urgent) 30%, var(--line)); }
-  .col-head { display:flex; align-items:center; gap:8px; padding:2px 4px 3px; }
-  .col-head b { font-size:14px; }
+  .col-head { display:flex; align-items:center; gap:10px; padding:2px 6px 4px; }
+  .col-head b { font-size:15.5px; letter-spacing:-.01em; }
   .col-head .count { margin-left:auto; background:var(--surface); }
-  .col-sub { font-size:12.5px; color:var(--muted); padding:0 4px 10px; }
-  .lead { background:var(--surface); border:1px solid var(--line); border-radius:13px; padding:12px 13px; margin-bottom:10px; cursor:pointer; transition:box-shadow .15s, transform .15s; box-shadow:var(--shadow); }
-  .lead:hover { transform:translateY(-2px); box-shadow:0 10px 28px rgba(33,29,25,.1); }
-  .lead .top { display:flex; align-items:center; gap:10px; }
-  .lead .nm { font-weight:700; line-height:1.2; }
-  .lead .sub { color:var(--muted); font-size:13px; }
-  .lead .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
-  .tag { display:inline-flex; align-items:center; gap:5px; font-size:12.5px; background:var(--soft); border:1px solid var(--line); padding:2px 9px; border-radius:99px; color:var(--muted); font-weight:600; }
+  .col-sub { font-size:13px; color:var(--muted); padding:0 6px 18px; }
+  .lead { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:20px 20px 18px; margin-bottom:18px; cursor:pointer; transition:box-shadow .15s, transform .15s; box-shadow:var(--shadow); }
+  .lead:hover { transform:translateY(-2px); box-shadow:0 10px 28px rgba(13,18,38,.12); }
+  .lead .top { display:flex; align-items:center; gap:14px; }
+  .lead .nm { font-weight:700; font-size:16px; line-height:1.25; letter-spacing:-.01em; }
+  .lead .sub { color:var(--muted); font-size:13.5px; margin-top:2px; }
+  .lead .tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .lead .brief { margin-top:14px; font-size:14px; line-height:1.55; color:var(--ink); opacity:.86; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .lead .nextline { margin-top:16px; padding:11px 13px; border-radius:12px; font-size:13.5px; line-height:1.45; display:flex; gap:9px; align-items:flex-start; background:var(--soft); border:1px solid var(--line); }
+  .lead .nextline b { font-weight:700; }
+  .lead .nextline.urgent { background:var(--urgent-bg); border-color:transparent; color:var(--urgent); }
+  .lead .nextline.soon { background:var(--nurture-bg); border-color:transparent; }
+  .lead .nextline.ok { background:var(--active-bg); border-color:transparent; }
+  .tag { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; background:var(--soft); border:1px solid var(--line); padding:4px 11px; border-radius:99px; color:var(--muted); font-weight:600; }
   .tag.call { background:var(--active-bg); color:var(--active); border-color:transparent; }
   .tag.warn { background:var(--urgent-bg); color:var(--urgent); border-color:transparent; }
-  .lead .alertline { margin-top:9px; font-size:13px; color:var(--urgent); font-weight:600; display:flex; gap:6px; align-items:flex-start; }
+  .lead .alertline { display:none; }
   .lead .reddot { width:9px; height:9px; border-radius:50%; background:var(--urgent); flex-shrink:0; }
 
   table.list { width:100%; border-collapse:separate; border-spacing:0; background:var(--surface); border:1px solid var(--line); border-radius:var(--r); overflow:hidden; }
@@ -155,7 +161,7 @@
   .callrow .time small { display:block; font-weight:600; color:var(--muted); font-size:12.5px; }
   .callrow.over { border-left:4px solid var(--urgent); }
 
-  .scrim { position:fixed; inset:0; background:rgba(20,17,13,.45); backdrop-filter:blur(2px); display:none; z-index:30; }
+  .scrim { position:fixed; inset:0; background:rgba(10,13,23,.5); backdrop-filter:blur(2px); display:none; z-index:30; }
   .scrim.open { display:block; }
   .drawer { position:fixed; top:0; right:0; bottom:0; width:min(680px,100vw); background:var(--bg); z-index:31; transform:translateX(100%); transition:transform .25s cubic-bezier(.2,.8,.2,1); display:flex; flex-direction:column; box-shadow:var(--shadow-lg); }
   .drawer.open { transform:none; }
@@ -169,6 +175,11 @@
   .next.ok { background:var(--active-bg); border:1px solid color-mix(in srgb, var(--active) 25%, var(--line)); }
   .next b { display:block; }
   .glance { background:var(--brand-soft); border-radius:14px; padding:14px 16px; line-height:1.55; }
+  .quick { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:18px; box-shadow:var(--shadow); }
+  .quick-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .quick .next { margin-bottom:12px; }
+  .quick .said { margin-top:12px; padding:12px 14px; border-left:3px solid var(--brand); background:var(--soft); border-radius:0 12px 12px 0; font-size:14.5px; }
+  .next.idle { background:var(--soft); border:1px solid var(--line); }
   .facts { display:grid; grid-template-columns:1fr 1fr; gap:0 18px; }
   .sec { margin-top:26px; }
   .sec > h3 { margin-bottom:10px; font-size:15px; display:flex; align-items:center; gap:8px; }
@@ -366,6 +377,7 @@ async function refreshBoot() { state.boot = await api('/api/bootstrap'); renderF
 function leadCard(l) {
   const u = urgentOf(l) || (l.stage === 'human' ? { title: 'Wants to talk to a person' } : null);
   const tags = [];
+  void u;
   if (l.callback_at) { const late = l.callback_status === 'scheduled' && l.callback_at < Date.now() - 30 * 60000; tags.push(`<span class="tag ${late ? 'warn' : 'call'}">${ic('cal', 'sm')} ${esc(whenText(l.callback_at))}${late ? ' (overdue)' : ''}</span>`); }
   else if (l.callback_text && l.stage === 'active') tags.push(`<span class="tag">${ic('clock', 'sm')} ${esc(l.callback_text)}</span>`);
   if (l.budget_amount != null) tags.push(`<span class="tag">${esc(money(l.budget_amount))}</span>`);
@@ -374,7 +386,8 @@ function leadCard(l) {
   return `<div class="lead" data-open="${l.id}">
     <div class="top"><div class="avatar">${esc(initials(l.name))}</div><div class="grow"><div class="nm">${esc(l.name || 'Unknown')}</div><div class="sub">${esc(projectLine(l))}</div></div>${isUrgent(l) ? '<span class="reddot" title="Needs you"></span>' : ''}</div>
     <div class="tags">${tags.join('')}</div>
-    ${u ? `<div class="alertline">${ic('alert', 'sm')}<span>${esc(u.title)}</span></div>` : ''}
+    ${l.brief ? `<div class="brief">${esc(l.brief)}</div>` : ''}
+    ${l.next_step ? `<div class="nextline ${l.next_step.tone}">${ic(l.next_step.tone === 'urgent' ? 'alert' : l.next_step.tone === 'idle' ? 'clock' : 'check', 'sm')}<span><b>Next:</b> ${esc(l.next_step.text)}</span></div>` : ''}
   </div>`;
 }
 function bindOpen(root) { root.querySelectorAll('[data-open]').forEach((el) => { el.onclick = (e) => { if (e.target.closest('button[data-done]')) return; openLead(Number(el.dataset.open)); }; }); }
@@ -548,8 +561,12 @@ async function openLead(id, { soft } = {}) {
       <button class="btn ghost" id="dx" aria-label="Close">${ic('x')}</button></div>
   </div>
   <div class="d-body">
-    ${nextHtml}
-    <div class="glance"><b>At a glance</b><div style="margin-top:4px">${esc(l.brief || 'Still getting to know this customer.')}</div>${l.stage_reason ? `<div class="mute" style="margin-top:8px;font-size:13.5px">Why ${esc(S[l.stage].label.toLowerCase())}: ${esc(l.stage_reason)}</div>` : ''}</div>
+    <div class="quick">
+      <div class="quick-head"><b>Quick summary</b><span class="mute">Everything you need to move this forward</span></div>
+      <div class="next ${l.next_step ? l.next_step.tone : 'idle'}">${ic(l.next_step && l.next_step.tone === 'urgent' ? 'alert' : 'check')}<div class="grow"><b>Next step</b>${esc(l.next_step ? l.next_step.text : '')}</div></div>
+      <div class="glance"><b>The story so far</b><div style="margin-top:4px">${esc(l.brief || 'Still getting to know this customer.')}</div>${l.stage_reason ? `<div class="mute" style="margin-top:8px;font-size:13.5px">Why ${esc(S[l.stage].label.toLowerCase())}: ${esc(l.stage_reason)}</div>` : ''}</div>
+      ${l.last_customer ? `<div class="said"><span class="mute">Last thing they said, ${ago(l.last_customer.at)}</span><div>“${esc(l.last_customer.text)}”</div></div>` : ''}
+    </div>
 
     <div class="sec"><h3>${ic('cal', 'sm')} Call with a designer</h3>
       <div class="card" style="box-shadow:none">

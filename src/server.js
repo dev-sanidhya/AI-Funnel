@@ -6,8 +6,9 @@ const crypto = require('node:crypto');
 const { toCsv } = require('./crm');
 const { STAGES, STAGE_LABELS, evaluate } = require('./qualify');
 const { normalizePhone } = require('./db');
-const { attentionFor, briefFor, windowOpen, windowHoursLeft } = require('./attention');
+const { attentionFor, briefFor, nextStepFor, windowOpen, windowHoursLeft } = require('./attention');
 const { isoLocalToEpoch } = require('./when');
+const formOptions = require('./formoptions');
 
 const PUBLIC = path.resolve(__dirname, '..', 'public');
 const MAX_BODY = 200 * 1024;
@@ -109,6 +110,8 @@ function createServer(app) {
       callback_at: l.callback_at, callback_text: l.callback_text, callback_status: l.callback_status, callback_kind: l.callback_kind,
       brief: briefFor(l, settings.get()),
       attention: attentionFor(l, settings.get()),
+      next_step: nextStepFor(l, settings.get()),
+      last_customer: (() => { const m = store.get("SELECT text, created_at FROM messages WHERE lead_id=? AND direction='in' ORDER BY id DESC LIMIT 1", l.id); return m ? { text: m.text.slice(0, 160), at: m.created_at } : null; })(),
       window_hours_left: windowHoursLeft(l), can_ai_message: windowOpen(l, Date.now(), 0),
       last_message: last ? { text: last.text.slice(0, 140), direction: last.direction, role: last.role, at: last.created_at } : null,
       created_at: l.created_at, updated_at: l.updated_at, qualified_at: l.qualified_at,
@@ -167,14 +170,13 @@ function createServer(app) {
     if (existing && existing.channel !== 'sim' && Date.now() - existing.created_at < 24 * 3600 * 1000 && !existing.chat_id) {
       return { lead: existing, duplicate: true };
     }
+    const m = formOptions.mapIntake(body, settings.get());
     const lead = engine.createLeadFromIntake({
       name, phone: phone || null, email: email || null,
-      city: first(body.city).slice(0, 60) || null,
-      project_type: first(body.project_type).slice(0, 60) || null,
-      notes: first(body.notes).slice(0, 300) || null,
+      ...m,
       campaign: first(body.campaign).slice(0, 60) || null,
       source: source,
-      raw: { city: first(body.city), project_type: first(body.project_type) },
+      raw: { ...m },
     });
     return { lead, duplicate: false };
   }
@@ -201,7 +203,14 @@ function createServer(app) {
   });
   route('GET', '/api/public-config', { public: true }, (req, res) => {
     const s = settings.get();
-    send(res, 200, { business: s.business.name, tagline: s.business.tagline, project_types: s.qualification.project_types, bot: telegram.botUsername, telegram_enabled: telegram.enabled, instagram: instagram.handle, primary: primaryChannel() });
+    send(res, 200, {
+      business: s.business.name, tagline: s.business.tagline, description: s.business.description, areas: s.business.areas,
+      project_types: s.qualification.project_types, bot: telegram.botUsername, telegram_enabled: telegram.enabled, instagram: instagram.handle, primary: primaryChannel(),
+      options: {
+        scope: formOptions.SCOPE_OPTIONS.map((o) => o.label), property_types: formOptions.PROPERTY_TYPES, sizes: formOptions.SIZES,
+        contact_times: formOptions.CONTACT_TIMES, timelines: formOptions.TIMELINE_OPTIONS.map((o) => o.label), budgets: formOptions.budgetOptions(s.qualification.currency).map((o) => o.label),
+      },
+    });
   });
   route('POST', '/api/intake', { public: true }, async (req, res) => {
     limit(req, 'intake', 20);

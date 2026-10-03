@@ -89,3 +89,35 @@ function briefFor(lead, settings, now = Date.now()) {
 }
 
 module.exports = { attentionFor, briefFor, windowOpen, windowHoursLeft };
+
+// "What should I do with this lead?" in one plain sentence, so anyone can open a lead
+// (or glance at its card) and know how to move it forward.
+// Returns { text, tone: 'urgent' | 'soon' | 'ok' | 'idle' }.
+function nextStepFor(lead, settings, now = Date.now()) {
+  const tz = settings.business.timezone || 'Asia/Kolkata';
+  const meta = lead.meta || {};
+  const flags = meta.flags || {};
+  const fu = meta.fu || {};
+  const items = attentionFor(lead, settings, now);
+  const top = items[0];
+  const noPhone = !lead.phone && !lead.email;
+  if (lead.stage === 'disqualified') return { text: lead.stage_reason ? `No action needed. ${lead.stage_reason}.` : 'No action needed.', tone: 'idle' };
+  if (flags.wants_human && !fu.human_done_at) return { text: 'They asked for a person. Reply to them now.', tone: 'urgent' };
+  if (top && top.kind === 'manual') return { text: 'Message or call them yourself. The assistant can no longer reach them.', tone: 'urgent' };
+  if (top && top.kind === 'reply') return { text: 'They wrote back. Reply to them, the assistant is paused.', tone: 'urgent' };
+  if (lead.callback_at && lead.callback_status === 'scheduled' && !fu.done_at) {
+    const when = formatWhen(lead.callback_at, tz, now);
+    if (top && top.kind === 'call_overdue') return { text: `The call was due ${when}. Check it happened, then mark it done.`, tone: 'urgent' };
+    return { text: `${lead.designer ? `${lead.designer} to call` : 'Call'} ${when}.${noPhone ? ' Get a phone number first.' : ''}`, tone: 'ok' };
+  }
+  if (lead.stage === 'active') {
+    if (noPhone) return { text: 'Ask for a phone number and agree a call time.', tone: 'soon' };
+    return { text: lead.callback_text ? `Confirm a call time. They said "${lead.callback_text}".` : 'Agree a time for the designer call.', tone: 'soon' };
+  }
+  if (lead.stage === 'nurture') return { text: 'Not ready yet. The assistant will check in now and then; follow up when they are.', tone: 'idle' };
+  if (lead.stage === 'qualifying') return { text: 'The assistant is chatting and still finding out the basics.', tone: 'idle' };
+  if (lead.stage === 'human') return { text: 'They want to talk to a person. Reply to them now.', tone: 'urgent' };
+  return { text: lead.chat_id ? 'Waiting for their first reply.' : 'Waiting for them to open the chat.', tone: 'idle' };
+}
+
+module.exports.nextStepFor = nextStepFor;

@@ -11,6 +11,11 @@ const { parseWhen, isoLocalToEpoch } = require('./when');
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
 const PHONE_RE = /(?:\+?\d[\d\s().-]{6,17}\d)/;
 
+// The model proposes flags; the customer's own words must back them up. A harmless
+// "hi bhai, 2bhk interior karwana hai" must never be able to hand a lead to a human or end the chat.
+const HUMAN_WORDS = /\b(human|person|people|agent|representative|someone|somebody|staff|manager|owner|real|bot|robot|talk to|speak to|speak with|talk with|connect me|insaan|aadmi|banda|kisi se|complain|complaint|angry|useless|worst|scam|fraud|rubbish|stupid|idiot|annoying)\b/i;
+const STOP_WORDS = /\b(not interested|no longer|stop|unsubscribe|remove me|leave me|don'?t (want|message|contact|call)|do not (want|message|contact|call)|nahi chahiye|nahin chahiye|mat karo|no thanks|no thank you|nope|cancel|changed my mind|forget it|never mind|nevermind)\b/i;
+
 const clip = (s, n) => String(s).trim().replace(/\s+/g, ' ').slice(0, n);
 const validNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -124,8 +129,8 @@ function applyFacts(lead, f, userText, { lastAsked = null, settings, now = Date.
     budget: known.budget_amount != null,
     timeline: known.timeline_months != null,
   };
-  if (f.wants_human === true) meta.flags.wants_human = true;
-  if (f.not_interested === true) meta.flags.not_interested = true;
+  if (f.wants_human === true && HUMAN_WORDS.test(userText)) meta.flags.wants_human = true;
+  if (f.not_interested === true && STOP_WORDS.test(userText)) meta.flags.not_interested = true;
   else if (changed.length && meta.flags.not_interested) delete meta.flags.not_interested;
   if (Array.isArray(f.refused)) {
     for (const field of f.refused) {

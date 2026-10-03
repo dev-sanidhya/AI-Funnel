@@ -70,6 +70,13 @@ class Engine extends EventEmitter {
       email: data.email || null,
       city: data.city || null,
       project_type: data.project_type || null,
+      scope: data.scope || null,
+      property: data.property || null,
+      contact_pref: data.contact_pref || null,
+      budget_amount: data.budget_amount ?? null,
+      budget_text: data.budget_text || null,
+      timeline_months: data.timeline_months ?? null,
+      timeline_text: data.timeline_text || null,
       source: data.source || 'form',
       campaign: data.campaign || null,
       start_token: this.newToken(),
@@ -283,7 +290,7 @@ class Engine extends EventEmitter {
           }
         }
       } else {
-        directive = { type: `CLOSE_${stage === 'active' ? 'ACTIVE' : stage === 'nurture' ? 'NURTURE' : 'DISQUALIFIED'}`, reason: reasonText };
+        directive = { type: `CLOSE_${stage === 'active' ? 'ACTIVE' : stage === 'nurture' ? 'NURTURE' : 'DISQUALIFIED'}`, reason: reasonText, first: greeting };
       }
     } else {
       const field = ev.nextField;
@@ -630,9 +637,10 @@ class Engine extends EventEmitter {
       this.store.run('DELETE FROM events WHERE lead_id=?', leadId);
       const form = (lead.meta && lead.meta.form) || {};
       this.store.updateLead(leadId, {
-        project_type: form.project_type || null, city: form.city || null,
-        budget_amount: null, budget_text: null, timeline_months: null, timeline_text: null,
-        notes: null, stage: 'new', stage_reason: null, stage_locked: 0, score: 0, designer_id: null,
+        project_type: form.project_type || null, city: form.city || null, scope: form.scope || null, property: form.property || null, contact_pref: form.contact_pref || null,
+        style: null, callback_at: null, callback_text: null, callback_status: null, callback_kind: null,
+        budget_amount: form.budget_amount ?? null, budget_text: form.budget_text || null, timeline_months: form.timeline_months ?? null, timeline_text: form.timeline_text || null,
+        notes: form.notes || null, stage: 'new', stage_reason: null, stage_locked: 0, score: 0, designer_id: null,
         ai_paused: 0, opted_out: 0, summary: '', summary_upto: 0, qualified_at: null,
         last_inbound_at: null, last_outbound_at: null, meta: { form },
       });

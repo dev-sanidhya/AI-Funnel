@@ -28,7 +28,7 @@ function fakeLlm() {
       if (/3bhk/i.test(text)) out.property = '3BHK flat';
       return out;
     }
-    const confirm = sys.match(/time back exactly as: (.+?) \(/);
+    const confirm = sys.match(/time back exactly as written: (.+?)\. The person/);
     if (confirm) return `Perfect, we will call you ${confirm[1]}. What is the best number to reach you on?`;
     const rem = sys.match(/will call them at (.+?)\. Invite/);
     if (rem) return `Quick reminder: your designer call is at ${rem[1]}. Reply here if the time needs to change.`;
