@@ -15,6 +15,7 @@
 const { EventEmitter } = require('node:events');
 const crypto = require('node:crypto');
 const { applyFacts } = require('./facts');
+const { quickFacts } = require('./quickfacts');
 const { evaluate, pickDesigner, STAGE_LABELS } = require('./qualify');
 const { fallbackReply } = require('./agent');
 const { formatMoney } = require('./budget');
@@ -229,11 +230,14 @@ class Engine extends EventEmitter {
 
       // 1. Extract facts (LLM), tolerate failure.
       let facts = null;
+      let aiFailed = false;
       try {
         facts = await this.agent.extract(lead, history, text, settings, lastAsked);
       } catch (e) {
+        aiFailed = true;
         this.stats.llmFallbacks++;
         this.store.addEvent(lead.id, 'llm_error', { step: 'extract', error: String(e.message).slice(0, 200) });
+        facts = quickFacts(text, lastAsked, settings); // no AI: still read the common answers by rule
       }
       const applied = applyFacts(lead, facts || {}, text, { lastAsked, settings, now: Date.now() });
       applied.meta.turns = (lead.meta.turns || 0) + 1;
@@ -248,10 +252,12 @@ class Engine extends EventEmitter {
       lead = decision.lead;
 
       // 3. Compose.
-      const reply = await this.compose(lead, decision.directive, settings, history.concat(rows));
+      const info = {};
+      const reply = await this.compose(lead, decision.directive, settings, history.concat(rows), info);
+      if (info.failed) aiFailed = true;
 
       // 4. Commit everything for this turn atomically.
-      const out = this.commitTurn({ lead, decision, reply, rowIds, prevStage, changed: applied.changed });
+      const out = this.commitTurn({ lead, decision, reply, rowIds, prevStage, changed: applied.changed, aiFailed });
       this.changed('lead', leadId);
       if (out.messageId) this.deliver(out.messageId).catch(() => {});
       this.sideEffects(out.lead, prevStage, decision, applied.changed);
@@ -296,12 +302,12 @@ class Engine extends EventEmitter {
       const field = ev.nextField;
       const col = { budget: 'budget_amount', timeline: 'timeline_months' }[field] || field;
       const hesitated = !!(meta.refusals && meta.refusals[field] > 0) && !changed.includes(col);
-      directive = greeting ? { type: 'GREET', field } : { type: 'ASK', field, hesitated };
+      directive = greeting ? { type: 'GREET', field } : { type: 'ASK', field, hesitated, attempt: meta.asked[field] || 0 };
     }
     return { ev, stage, reason: reasonText, directive, lead };
   }
 
-  async compose(lead, directive, settings, history) {
+  async compose(lead, directive, settings, history, info = {}) {
     if (!directive) return null;
     const designer = directive.type === 'CLOSE_ACTIVE' ? this.previewDesigner(lead) : (lead.designer_id ? this.store.getDesigner(lead.designer_id) : null);
     const ctx = { lead, settings, designer, summary: lead.summary };
@@ -311,6 +317,7 @@ class Engine extends EventEmitter {
       this.stats.llmFallbacks++;
       this.store.addEvent(lead.id, 'reply_fallback', { directive: directive.type, why: 'validator_or_empty' });
     } catch (e) {
+      info.failed = true;
       this.stats.llmFallbacks++;
       this.store.addEvent(lead.id, 'llm_error', { step: 'reply', error: String(e.message).slice(0, 200) });
     }
@@ -327,9 +334,12 @@ class Engine extends EventEmitter {
     return loads;
   }
 
-  commitTurn({ lead, decision, reply, rowIds, prevStage, changed }) {
+  commitTurn({ lead, decision, reply, rowIds, prevStage, changed, aiFailed = false }) {
     const { ev, stage, directive } = decision;
     const meta = { ...lead.meta };
+    // If the AI could not handle this turn, the owner must know: it shows under "Needs you now".
+    meta.fu = { ...(meta.fu || {}) };
+    if (aiFailed) meta.fu.ai_failed_at = Date.now(); else delete meta.fu.ai_failed_at;
     if (directive && directive.type === 'ASK') {
       meta.last_asked = directive.field;
       meta.asked = { ...meta.asked, [directive.field]: (meta.asked[directive.field] || 0) + 1 };

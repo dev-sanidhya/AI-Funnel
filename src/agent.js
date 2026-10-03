@@ -24,6 +24,26 @@ const FALLBACK_ASK = {
   timeline: 'When are you hoping to start or move in?',
 };
 
+// Used only when the AI is unreachable: different wording each time so it never loops.
+const ALT_ASK = {
+  project_type: [
+    'Sorry, I want to make sure I get this right. Is it a whole home, just a kitchen or wardrobes, an office, or a renovation?',
+    'No problem, tell me in your own words what space you would like to work on and I will take it from there.',
+  ],
+  city: [
+    'And which city is the property in? Even just the city name is perfect.',
+    'Just so I can match you with the right designer, could you type the city the project is in?',
+  ],
+  budget: [
+    'Roughly what range are you thinking of for this project? A ballpark is completely fine.',
+    'If you are not sure yet, an estimate like "5 to 10 lakh" helps us match you with the right designer.',
+  ],
+  timeline: [
+    'And when are you hoping to get started, roughly? For example "in 2 months" or "as soon as possible".',
+    'Do you have a rough start date in mind, or are you still exploring?',
+  ],
+};
+
 function renderFacts(lead, currency, tz = 'Asia/Kolkata') {
   const rows = [];
   if (lead.name) rows.push(`Name: ${lead.name}`);
@@ -231,6 +251,7 @@ function fallbackReply(directive, ctx) {
     case 'GREET':
       return `Hi ${first}, thanks for your enquiry with ${biz}! I'm ${settings.agent.name}, and I have a couple of quick questions to match you with the right designer. ${FALLBACK_ASK[directive.field] || 'How can I help?'}`;
     case 'ASK':
+      if (directive.attempt > 0 && ALT_ASK[directive.field]) return ALT_ASK[directive.field][(directive.attempt - 1) % ALT_ASK[directive.field].length];
       return directive.hesitated && directive.field === 'budget'
         ? "No problem at all, even a rough ballpark helps us match you with the right designer. Roughly what range are you thinking of?"
         : `Thanks! ${FALLBACK_ASK[directive.field]}`;

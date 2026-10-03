@@ -359,7 +359,8 @@ function renderFoot() {
   const s = state.boot && state.boot.status; if (!s) return;
   const ig = s.instagram && s.instagram.enabled ? (s.instagram.connected ? '<span class="dot ok"></span> Instagram connected' : '<span class="dot bad"></span> Instagram offline') : '<span class="dot warn"></span> Instagram not set up';
   const tg = s.telegram.enabled ? (s.telegram.connected ? '<span class="dot ok"></span> Telegram connected' : '<span class="dot bad"></span> Telegram offline') : '';
-  const ai = s.llm.enabled ? '<span class="dot ok"></span> Assistant is on' : '<span class="dot bad"></span> Assistant is off';
+  const provs = s.llm.providers || []; const allDown = provs.length && provs.every((p) => !p.configured || p.cooling);
+  const ai = !s.llm.enabled ? '<span class="dot bad"></span> Assistant is off' : allDown ? '<span class="dot bad"></span> Assistant is out of AI credit' : provs.some((p) => p.cooling) ? '<span class="dot warn"></span> Assistant on (backup AI)' : '<span class="dot ok"></span> Assistant is on';
   $('#foot').innerHTML = `${ig}<br>${tg ? tg + '<br>' : ''}${ai}<br><a href="#" id="logout" style="color:var(--muted)">Sign out</a>`;
   $('#logout').onclick = act(async (e) => { e.preventDefault(); await api('/api/logout', { method: 'POST', body: {} }); location.reload(); });
   $('#bizName').textContent = state.boot.settings.business.name;

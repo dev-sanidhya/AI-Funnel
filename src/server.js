@@ -147,7 +147,7 @@ function createServer(app) {
       uptime_s: Math.round((Date.now() - started) / 1000),
       telegram: { ...telegram.status, username: telegram.botUsername },
       instagram: { ...instagram.status, username: instagram.handle, token: instagram.tokenInfo(), primary: primaryChannel() },
-      llm: { enabled: llm.enabled, model: config.llm.model, fallback_model: config.llm.fallbackModel, ...llm.stats },
+      llm: { enabled: llm.enabled, model: config.llm.model, fallback_model: config.llm.fallbackModel, providers: llm.providerStatus(), ...llm.stats },
       engine: engine.stats,
       outbox: {
         pending_messages: q("SELECT COUNT(*) c FROM messages WHERE direction='out' AND status='pending'"),

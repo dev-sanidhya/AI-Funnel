@@ -34,6 +34,9 @@ function attentionFor(lead, settings, now = Date.now()) {
   if (lead.stage === 'disqualified' && !flags.wants_human) return items;
   const noPhone = !lead.phone && !lead.email;
 
+  if (fu.ai_failed_at && !(fu.manual_done_at > fu.ai_failed_at) && lead.stage !== 'disqualified') {
+    items.push({ level: 'urgent', kind: 'ai_down', title: 'The assistant had trouble replying', detail: 'The AI service had a problem on their last message. Reply to them yourself.', due_at: fu.ai_failed_at });
+  }
   if (flags.wants_human && !fu.human_done_at) {
     items.push({ level: 'urgent', kind: 'human', title: 'Asked to talk to a person', detail: 'They want a human to take over this chat.', due_at: lead.last_inbound_at || null });
   } else if (lead.ai_paused && (lead.last_inbound_at || 0) > (lead.last_outbound_at || 0)) {
@@ -103,6 +106,7 @@ function nextStepFor(lead, settings, now = Date.now()) {
   const noPhone = !lead.phone && !lead.email;
   if (lead.stage === 'disqualified') return { text: lead.stage_reason ? `No action needed. ${lead.stage_reason}.` : 'No action needed.', tone: 'idle' };
   if (flags.wants_human && !fu.human_done_at) return { text: 'They asked for a person. Reply to them now.', tone: 'urgent' };
+  if (top && top.kind === 'ai_down') return { text: 'The assistant had trouble replying. Reply to them yourself.', tone: 'urgent' };
   if (top && top.kind === 'manual') return { text: 'Message or call them yourself. The assistant can no longer reach them.', tone: 'urgent' };
   if (top && top.kind === 'reply') return { text: 'They wrote back. Reply to them, the assistant is paused.', tone: 'urgent' };
   if (lead.callback_at && lead.callback_status === 'scheduled' && !fu.done_at) {

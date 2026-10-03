@@ -1,6 +1,8 @@
 'use strict';
-// Reliable LLM access: soft RPM limiter, per-call timeout, retry with backoff
-// (honouring Retry-After), automatic fallback model, and tolerant JSON parsing.
+// Reliable LLM access across one or more providers (any OpenAI-compatible API):
+// soft RPM limiter, per-call timeout, retry with backoff (honouring Retry-After),
+// automatic model fallback, automatic PROVIDER fallback (with a cooldown when a
+// provider is out of quota or unauthorised), and tolerant JSON parsing.
 // Every failure mode ends in either a result or a thrown LlmError; callers
 // always have a deterministic fallback, so a flaky provider never silences the bot.
 
@@ -36,17 +38,30 @@ function extractJson(text) {
   return null;
 }
 
+// Daily free allocations and hard quotas do not recover by retrying in a few seconds.
+const QUOTA_TEXT = /(daily free allocation|used up|quota|exceeded your current|insufficient_quota|billing|upgrade to)/i;
+
 class Llm {
   constructor(cfg, { fetchImpl } = {}) {
     this.cfg = cfg;
     this.fetch = fetchImpl || globalThis.fetch;
+    this.providers = cfg.providers || [{
+      name: 'primary', baseUrl: cfg.baseUrl, apiKey: cfg.apiKey,
+      models: [cfg.model, cfg.fallbackModel].filter(Boolean), tpm: cfg.tpm,
+    }];
     this.stamps = [];
     this.tok = {};
-    this.stats = { calls: 0, failures: 0, fallbacks: 0, lastOkAt: null, lastError: null, lastLatencyMs: null };
+    this.cool = {}; // provider name -> epoch ms until which it is skipped
+    this.stats = { calls: 0, failures: 0, fallbacks: 0, lastOkAt: null, lastError: null, lastLatencyMs: null, lastProvider: null };
     this.override = null; // tests / offline mode: async ({system, messages, json}) => string
   }
 
-  get enabled() { return !!(this.override || this.cfg.apiKey); }
+  get enabled() { return !!(this.override || this.providers.some((p) => p.apiKey)); }
+
+  providerStatus() {
+    const now = Date.now();
+    return this.providers.map((p) => ({ name: p.name, configured: !!p.apiKey, cooling: (this.cool[p.name] || 0) > now, until: this.cool[p.name] || null }));
+  }
 
   async throttle() {
     const limit = this.cfg.maxRpm;
@@ -63,19 +78,20 @@ class Llm {
     const chars = (o.system || '').length + o.messages.reduce((n, m) => n + String(m.content).length, 0);
     return Math.ceil(chars / 3.6) + Math.min(o.maxTokens || 500, 350);
   }
-  used(model) {
+  used(key) {
     const t = Date.now();
-    const arr = (this.tok[model] || []).filter((x) => t - x.t < 60000);
-    this.tok[model] = arr;
+    const arr = (this.tok[key] || []).filter((x) => t - x.t < 60000);
+    this.tok[key] = arr;
     return arr.reduce((n, x) => n + x.n, 0);
   }
-  hasRoom(model, est) { return !this.cfg.tpm || this.used(model) + est <= this.cfg.tpm; }
+  hasRoom(c, est) { return !c.provider.tpm || this.used(c.key) + est <= c.provider.tpm; }
 
-  async rawCall(model, { system, messages, json, maxTokens, temperature }, { dropReasoning = false } = {}) {
+  async rawCall(c, { system, messages, json, maxTokens, temperature }, { dropReasoning = false } = {}) {
     await this.throttle();
+    const { provider, model } = c;
     const est = this.estimate({ system, messages, maxTokens });
     const entry = { t: Date.now(), n: est };
-    (this.tok[model] = this.tok[model] || []).push(entry);
+    (this.tok[c.key] = this.tok[c.key] || []).push(entry);
     const body = {
       model,
       messages: [...(system ? [{ role: 'system', content: system }] : []), ...messages],
@@ -88,9 +104,9 @@ class Llm {
     const timer = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs);
     const t0 = Date.now();
     try {
-      const res = await this.fetch(`${this.cfg.baseUrl}/chat/completions`, {
+      const res = await this.fetch(`${provider.baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.cfg.apiKey}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: ctrl.signal,
       });
@@ -98,6 +114,7 @@ class Llm {
         const errText = await res.text().catch(() => '');
         const err = new LlmError(`LLM ${res.status}: ${errText.slice(0, 300)}`);
         err.status = res.status;
+        err.quota = res.status === 429 && QUOTA_TEXT.test(errText);
         err.retryAfter = Number(res.headers.get('retry-after')) || Number((errText.match(/try again in ([\d.]+)s/i) || [])[1]) || 0;
         throw err;
       }
@@ -115,53 +132,61 @@ class Llm {
     }
   }
 
-  // One logical call. Rate limits (429) hop straight to the next model, which has
-  // its own token bucket; if every model is limited we wait out the shortest
-  // Retry-After and go round again. Timeouts and 5xx get one quick retry per model.
+  candidates(o) {
+    const out = [];
+    const now = Date.now();
+    this.providers.forEach((p, pi) => {
+      if (!p.apiKey || (this.cool[p.name] || 0) > now) return;
+      const models = pi === 0 && o.model ? [o.model, ...p.models.filter((m) => m !== o.model)] : p.models;
+      for (const model of models) out.push({ provider: p, model, key: `${p.name}:${model}`, rank: out.length });
+    });
+    return out;
+  }
+
+  // One logical call. Order of preference: provider 1's models, then provider 2's, and so on.
+  // A 429 about quota puts the provider on cooldown and moves on at once; an ordinary
+  // rate limit hops to the next candidate. Timeouts and 5xx get one quick retry each.
   async complete(opts) {
     this.stats.calls++;
     const o = { maxTokens: 700, temperature: 0.4, json: false, ...opts };
     if (this.override) return this.override(o);
-    if (!this.cfg.apiKey) throw new LlmError('No LLM API key configured');
-    const primary = o.model || this.cfg.model;
-    const models = [primary, ...[this.cfg.fallbackModel, this.cfg.model].filter((m) => m && m !== primary)];
-    const uniq = [...new Set(models)];
-    const flags = Object.fromEntries(uniq.map((m) => [m, { json: o.json, dropReasoning: false }]));
-    let lastErr;
+    if (!this.enabled) throw new LlmError('No LLM API key configured');
     const est = this.estimate(o);
-    for (let round = 0; round < 4; round++) {
+    const flags = {};
+    let lastErr;
+    for (let round = 0; round < 3; round++) {
+      const cands = this.candidates(o);
+      if (!cands.length) break; // every provider is cooling down: fail fast, callers have fallbacks
+      for (let w = 0; w < 10 && !cands.some((c) => this.hasRoom(c, est)); w++) await sleep(1500);
+      const ordered = [...cands.filter((c) => this.hasRoom(c, est)), ...cands.filter((c) => !this.hasRoom(c, est))];
       let wait = 0;
-      let allAuth = true;
-      // Prefer the first model that still has token headroom this minute; if none
-      // does, wait (bounded) for the window to free up rather than burning a 429.
-      for (let w = 0; w < 14 && !uniq.some((m) => this.hasRoom(m, est)); w++) await sleep(1500);
-      const order = [...uniq.filter((m) => this.hasRoom(m, est)), ...uniq.filter((m) => !this.hasRoom(m, est))];
-      for (let mi = 0; mi < order.length; mi++) {
-        const model = order[mi];
-        const fl = flags[model];
+      for (const c of ordered) {
+        if ((this.cool[c.provider.name] || 0) > Date.now()) continue;
+        const fl = (flags[c.key] = flags[c.key] || { json: o.json, dropReasoning: false });
         for (let a = 0; a < 2; a++) {
           try {
-            const text = await this.rawCall(model, { ...o, json: fl.json }, { dropReasoning: fl.dropReasoning });
+            const text = await this.rawCall(c, { ...o, json: fl.json }, { dropReasoning: fl.dropReasoning });
             this.stats.lastOkAt = Date.now();
-            if (model !== primary) this.stats.fallbacks++;
+            this.stats.lastProvider = c.key;
+            if (c.rank > 0) this.stats.fallbacks++;
             return text;
           } catch (e) {
             lastErr = e;
-            this.stats.lastError = `${model}: ${e.message}`.slice(0, 300);
+            this.stats.lastError = `${c.key}: ${e.message}`.slice(0, 300);
             if (e.status === 400) { // provider rejected an optional parameter: strip it, retry now
               if (fl.json) { fl.json = false; continue; }
               if (!fl.dropReasoning) { fl.dropReasoning = true; continue; }
               break;
             }
-            if (e.status === 401 || e.status === 403 || e.status === 404) break;
-            allAuth = false;
+            if (e.quota) { this.cool[c.provider.name] = Date.now() + 30 * 60000; break; }
+            if (e.status === 401 || e.status === 403) { this.cool[c.provider.name] = Date.now() + 10 * 60000; break; }
+            if (e.status === 404) break;
             if (e.status === 429) { wait = wait ? Math.min(wait, e.retryAfter || 3) : (e.retryAfter || 3); break; }
             if (a === 0) await sleep(400);
           }
         }
       }
-      if (allAuth) break;
-      if (round < 3) await sleep(Math.min(10000, Math.max(800, wait * 1000)));
+      if (round < 2) await sleep(Math.min(8000, Math.max(600, wait * 1000)));
     }
     this.stats.failures++;
     throw lastErr || new LlmError('LLM failed');

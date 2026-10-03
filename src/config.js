@@ -65,3 +65,17 @@ module.exports = {
       timeoutMs: num(env.LLM_TIMEOUT_MS, 25000),
     },
 };
+
+// Providers in order of preference. The first is the main one; a backup (Groq, via
+// GROQ_API_KEY or LLM_FALLBACK_API_KEY) takes over automatically if it runs out of quota.
+{
+  const L = module.exports.llm;
+  L.providers = [{ name: useCloudflare ? 'cloudflare' : 'primary', baseUrl: L.baseUrl, apiKey: L.apiKey, models: [L.model, L.fallbackModel].filter(Boolean), tpm: L.tpm }];
+  const backupKey = env.LLM_FALLBACK_API_KEY || (useCloudflare ? env.GROQ_API_KEY : '');
+  if (backupKey) {
+    L.providers.push({
+      name: 'backup', baseUrl: (env.LLM_FALLBACK_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, ''), apiKey: backupKey,
+      models: [env.LLM_FALLBACK_MODEL_NAME || 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'], tpm: num(env.LLM_FALLBACK_TPM, 6000),
+    });
+  }
+}
